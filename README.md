@@ -1,5 +1,9 @@
 # fast-gspan
 
+[![CI](https://github.com/Masatsugar/fast-gspan/actions/workflows/ci.yml/badge.svg)](https://github.com/Masatsugar/fast-gspan/actions)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: BSD-2-Clause](https://img.shields.io/badge/license-BSD--2--Clause-green.svg)](https://opensource.org/licenses/BSD-2-Clause)
+
 A Python wrapper for frequent subgraph mining powered by the [gBolt](https://github.com/Jokeren/gBolt) C++ backend.
 
 Provides a simple API to mine frequent subgraph patterns from NetworkX graphs, with significant speedups over pure-Python gSpan implementations.
