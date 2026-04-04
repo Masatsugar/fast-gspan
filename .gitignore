@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.so
+
+# gBolt build artifacts
+fast_gspan/vendor/gbolt/build/
+fast_gspan/vendor/gbolt/include/config.h
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# test / misc
+.pytest_cache/
+.ruff_cache/

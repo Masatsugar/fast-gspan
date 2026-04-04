@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fast-gspan"
+version = "0.1.0"
+description = "Fast gSpan (frequent subgraph mining) powered by gBolt C++ backend"
+readme = "README.md"
+license = "BSD-2-Clause"
+requires-python = ">=3.10"
+authors = [
+  { name = "Masatsugar", email = "20656329+Masatsugar@users.noreply.github.com" },
+]
+dependencies = [
+    "networkx>=3.0",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["fast_gspan"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "fast_gspan/**",
+    "tests/**",
+    "README.md",
+    "pyproject.toml",
+]
