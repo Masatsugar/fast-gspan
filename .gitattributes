@@ -1,0 +1,3 @@
+# Include vendored gBolt C++ source in GitHub language statistics
+fast_gspan/vendor/gbolt/src/** linguist-vendored=false
+fast_gspan/vendor/gbolt/include/** linguist-vendored=false

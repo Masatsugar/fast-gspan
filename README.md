@@ -1,6 +1,7 @@
 # fast-gspan
 
 [![CI](https://github.com/Masatsugar/fast-gspan/actions/workflows/ci.yml/badge.svg)](https://github.com/Masatsugar/fast-gspan/actions)
+[![PyPI](https://img.shields.io/pypi/v/fast-gspan.svg)](https://pypi.org/project/fast-gspan/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: BSD-2-Clause](https://img.shields.io/badge/license-BSD--2--Clause-green.svg)](https://opensource.org/licenses/BSD-2-Clause)
 
@@ -10,27 +11,32 @@ Provides a simple API to mine frequent subgraph patterns from NetworkX graphs, w
 
 ## Installation
 
+Pre-built wheels are available for Linux (x86_64) and macOS (arm64, x86_64):
+
 ```bash
-pip install git+https://github.com/Masatsugar/fast-gspan.git
-python -m fast_gspan build   # compile the C++ backend (requires cmake & C++ compiler)
+pip install fast-gspan
 ```
 
-### Build prerequisites
+### Building from source
 
-- Python >= 3.10
+If a pre-built wheel is not available for your platform, install from source:
+
+```bash
+pip install git+https://github.com/Masatsugar/fast-gspan.git
+python -m fast_gspan build   # compile the C++ backend
+```
+
+Source builds require:
+
 - CMake >= 3.10
 - C++ compiler with C++11 support (GCC, Clang)
 - OpenMP (optional, for parallel mining)
 
-On Ubuntu/Debian:
-
 ```bash
+# Ubuntu/Debian
 sudo apt-get install cmake g++ make
-```
 
-On macOS:
-
-```bash
+# macOS
 brew install cmake libomp
 ```
 

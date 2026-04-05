@@ -12,23 +12,45 @@ requires-python = ">=3.10"
 authors = [
   { name = "Masatsugar", email = "20656329+Masatsugar@users.noreply.github.com" },
 ]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering",
+]
 dependencies = [
     "networkx>=3.0",
     "pandas>=2.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Masatsugar/fast-gspan"
+Repository = "https://github.com/Masatsugar/fast-gspan"
+Issues = "https://github.com/Masatsugar/fast-gspan/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "build",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["fast_gspan"]
 
+[tool.hatch.build.targets.wheel.hooks.custom]
+
 [tool.hatch.build.targets.sdist]
 include = [
     "fast_gspan/**",
     "tests/**",
+    "hatch_build.py",
     "README.md",
     "pyproject.toml",
 ]
