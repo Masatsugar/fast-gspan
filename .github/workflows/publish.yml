@@ -3,22 +3,24 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
+  workflow_dispatch:  # allow manual trigger for testing
 
 permissions:
   contents: read
 
 jobs:
   build-wheels:
-    name: Build wheel (${{ matrix.os }})
+    name: Build wheel (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            platform: linux
-          - os: macos-latest        # arm64
+            platform: linux-x86_64
+          - os: macos-latest          # arm64 (Apple Silicon)
             platform: macos-arm64
-          - os: macos-13            # x86_64
+          - os: macos-13              # x86_64 (Intel)
             platform: macos-x86_64
 
     steps:
@@ -41,10 +43,29 @@ jobs:
           pip install build
           python -m build --wheel
 
-      - name: Verify wheel contains gBolt binary
+      - name: Inspect wheel contents
+        run: |
+          echo "=== Wheel file ==="
+          ls -lh dist/*.whl
+          echo "=== Binary and bundled libs ==="
+          python -m zipfile -l dist/*.whl | grep -E "(gbolt|\.so|\.dylib)"
+
+      - name: Verify wheel works
         run: |
           pip install dist/*.whl
-          python -c "from fast_gspan.gbolt_wrapper import _find_vendor_gbolt; assert _find_vendor_gbolt(), 'gBolt binary not found in wheel'"
+          python -c "
+          from fast_gspan import FastgSpan
+          import networkx as nx
+          graphs = []
+          for _ in range(10):
+              g = nx.Graph()
+              g.add_node(0, label=1); g.add_node(1, label=2)
+              g.add_edge(0, 1, label=1)
+              graphs.append(g)
+          df = FastgSpan(min_support=2, max_num_vertices=5).run_from_graphs(graphs)
+          assert len(df) > 0, 'No patterns found'
+          print(f'OK: {len(df)} patterns mined')
+          "
 
       - uses: actions/upload-artifact@v4
         with:
@@ -73,6 +94,7 @@ jobs:
 
   publish:
     name: Publish to PyPI
+    if: github.event_name == 'release'
     needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
     environment: pypi
@@ -84,6 +106,9 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh dist/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

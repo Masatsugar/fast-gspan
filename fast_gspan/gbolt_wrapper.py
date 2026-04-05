@@ -86,6 +86,22 @@ def _find_vendor_gbolt() -> Optional[str]:
     return None
 
 
+def _vendor_lib_env() -> dict:
+    """Return env dict with bundled lib/ added to the library search path.
+
+    On macOS wheels, libomp.dylib is bundled alongside the gBolt binary in a
+    lib/ subdirectory. We set DYLD_LIBRARY_PATH (macOS) or LD_LIBRARY_PATH
+    (Linux) so the binary can find them at runtime.
+    """
+    env = os.environ.copy()
+    lib_dir = Path(__file__).parent / "vendor" / "gbolt" / "build" / "lib"
+    if lib_dir.is_dir():
+        key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
+        existing = env.get(key, "")
+        env[key] = f"{lib_dir}:{existing}" if existing else str(lib_dir)
+    return env
+
+
 class GBoltWrapper:
     """Low-level Python wrapper for the gBolt binary."""
 
@@ -308,7 +324,7 @@ class GBoltWrapper:
             if self.max_vertices > 0:
                 cmd.extend(["-x", str(self.max_vertices)])
 
-            env = os.environ.copy()
+            env = _vendor_lib_env()
             if self.num_threads > 0:
                 env["OMP_NUM_THREADS"] = str(self.num_threads)
 
