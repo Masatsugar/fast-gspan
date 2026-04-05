@@ -30,7 +30,7 @@ def _detect_wheel_tag() -> str:
 
     if system == "Linux":
         arch = machine  # x86_64, aarch64, etc.
-        return f"py3-none-manylinux_2_17_{arch}"
+        return f"py3-none-manylinux_2_28_{arch}"
     elif system == "Darwin":
         if machine == "arm64":
             return "py3-none-macosx_11_0_arm64"

@@ -9,27 +9,78 @@ permissions:
   contents: read
 
 jobs:
-  build-wheels:
-    name: Build wheel (${{ matrix.platform }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux-x86_64
-          - os: macos-latest          # arm64 (Apple Silicon)
-            platform: macos-arm64
+  build-linux-wheel:
+    name: Build wheel (linux-x86_64)
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/pypa/manylinux_2_28_x86_64
 
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install build tools (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y cmake g++ make
+      - name: Install build tools
+        run: yum install -y cmake gcc-c++ make
 
-      - name: Install build tools (macOS)
-        if: runner.os == 'macOS'
+      - name: Build wheel
+        run: |
+          /opt/python/cp312-cp312/bin/pip install build
+          /opt/python/cp312-cp312/bin/python -m build --wheel
+
+      - name: Verify GLIBC requirement
+        run: |
+          objdump -T dist/*.whl 2>/dev/null || true
+          # Check the binary inside the wheel
+          /opt/python/cp312-cp312/bin/python -c "
+          import zipfile, glob, os, subprocess, tempfile
+          whl = glob.glob('dist/*.whl')[0]
+          with zipfile.ZipFile(whl) as z:
+              for name in z.namelist():
+                  if name.endswith('/gbolt'):
+                      with tempfile.NamedTemporaryFile(delete=False, suffix='_gbolt') as f:
+                          f.write(z.read(name))
+                          tmp = f.name
+                      os.chmod(tmp, 0o755)
+                      r = subprocess.run(['objdump', '-T', tmp], capture_output=True, text=True)
+                      glibc_vers = sorted(set(
+                          line.split('GLIBC_')[1].split(')')[0]
+                          for line in r.stdout.splitlines()
+                          if 'GLIBC_' in line
+                      ))
+                      print(f'Required GLIBC versions: {glibc_vers}')
+                      os.unlink(tmp)
+                      break
+          "
+
+      - name: Verify wheel works
+        run: |
+          /opt/python/cp312-cp312/bin/pip install dist/*.whl
+          /opt/python/cp312-cp312/bin/python -c "
+          from fast_gspan import FastgSpan
+          import networkx as nx
+          graphs = []
+          for _ in range(10):
+              g = nx.Graph()
+              g.add_node(0, label=1); g.add_node(1, label=2)
+              g.add_edge(0, 1, label=1)
+              graphs.append(g)
+          df = FastgSpan(min_support=2, max_num_vertices=5).run_from_graphs(graphs)
+          assert len(df) > 0, 'No patterns found'
+          print(f'OK: {len(df)} patterns mined')
+          "
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: wheel-linux-x86_64
+          path: dist/*.whl
+
+  build-macos-wheel:
+    name: Build wheel (macos-arm64)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install build tools
         run: brew install cmake libomp
 
       - uses: actions/setup-python@v6
@@ -67,7 +118,7 @@ jobs:
 
       - uses: actions/upload-artifact@v5
         with:
-          name: wheel-${{ matrix.platform }}
+          name: wheel-macos-arm64
           path: dist/*.whl
 
   build-sdist:
@@ -93,7 +144,7 @@ jobs:
   publish:
     name: Publish to PyPI
     if: github.event_name == 'release'
-    needs: [build-wheels, build-sdist]
+    needs: [build-linux-wheel, build-macos-wheel, build-sdist]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

@@ -129,6 +129,34 @@ class GBoltWrapper:
                 "gBolt executable not found. Run: python -m fast_gspan build"
             )
 
+        self._verify_binary()
+
+    def _verify_binary(self):
+        """Check that the gBolt binary actually runs on this system."""
+        try:
+            result = subprocess.run(
+                [self._gbolt_path, "--help"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env=_vendor_lib_env(),
+            )
+            # returncode 0 or 1 are both acceptable (--help may return 1)
+        except OSError as e:
+            raise RuntimeError(
+                f"gBolt binary cannot execute: {e}\n"
+                f"This may be a GLIBC version mismatch. The pre-built binary "
+                f"may require a newer glibc than your system provides.\n"
+                f"Fix: rebuild from source with 'python -m fast_gspan build'"
+            ) from e
+        else:
+            stderr = result.stderr.strip()
+            if "GLIBC" in stderr or "GLIBCXX" in stderr:
+                raise RuntimeError(
+                    f"gBolt binary incompatible with this system:\n{stderr}\n\n"
+                    f"Fix: rebuild from source with 'python -m fast_gspan build'"
+                )
+
     def _find_gbolt_executable(self, gbolt_path: Optional[str]) -> Optional[str]:
         if gbolt_path and os.path.exists(gbolt_path):
             return gbolt_path
