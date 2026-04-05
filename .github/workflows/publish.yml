@@ -20,8 +20,6 @@ jobs:
             platform: linux-x86_64
           - os: macos-latest          # arm64 (Apple Silicon)
             platform: macos-arm64
-          - os: macos-13              # x86_64 (Intel)
-            platform: macos-x86_64
 
     steps:
       - uses: actions/checkout@v4
