@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -111,12 +112,14 @@ class GBoltWrapper:
         min_support: int = 2,
         max_vertices: int = 0,
         num_threads: int = 0,
+        timeout: Optional[float] = None,
         show_progress: bool = False,
         verbose: bool = False,
     ):
         self.min_support = min_support
         self.max_vertices = max_vertices
         self.num_threads = num_threads
+        self.timeout = timeout
         self.show_progress = show_progress
         self.verbose = verbose
         self._gbolt_path = self._find_gbolt_executable(gbolt_path)
@@ -300,8 +303,12 @@ class GBoltWrapper:
         """Mine frequent subgraphs from a list of NetworkX graphs.
 
         Returns a list of pattern dicts with keys:
-        pattern_id, support, vertices, edges, dfs_codes (optional), graph_data.
+        pattern_id, support, vertices, edges, dfs_codes (optional),
+        graph_occurrences (optional), graph_data.
         """
+        if not graphs:
+            return []
+
         with tempfile.TemporaryDirectory() as temp_dir:
             input_file = os.path.join(temp_dir, "input.txt")
             output_file = os.path.join(temp_dir, "output.txt")
@@ -343,15 +350,19 @@ class GBoltWrapper:
                     cmd,
                     capture_output=True,
                     text=True,
-                    timeout=300,
+                    timeout=self.timeout,
                     env=env,
                 )
 
                 if result.returncode != 0:
                     if progress_monitor:
                         progress_monitor.stop(0)
-                    if self.verbose:
-                        print(f"gBolt stderr: {result.stderr}")
+                    warnings.warn(
+                        f"gBolt exited with code {result.returncode}. "
+                        f"stderr: {result.stderr.strip()[:500]}",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
                     return []
 
                 output_patterns = self._collect_gbolt_thread_outputs(
@@ -366,11 +377,25 @@ class GBoltWrapper:
             except subprocess.TimeoutExpired:
                 if progress_monitor:
                     progress_monitor.stop(0)
-                raise RuntimeError("gBolt execution timed out")
+                raise RuntimeError(
+                    f"gBolt execution timed out after {self.timeout}s. "
+                    f"Increase timeout or reduce dataset size."
+                )
             except Exception as e:
                 if progress_monitor:
                     progress_monitor.stop(0)
                 raise RuntimeError(f"Error running gBolt: {e}")
+
+
+_RESULT_COLUMNS = [
+    "support",
+    "description",
+    "num_vert",
+    "pattern_id",
+    "vertices",
+    "edges",
+    "graph_ids",
+]
 
 
 class FastgSpan:
@@ -385,8 +410,9 @@ class FastgSpan:
         gbolt_path: Optional[str] = None,
         min_support: int = 2,
         min_num_vertices: int = 1,
-        max_num_vertices: int = 10,
+        max_num_vertices: int = 0,
         num_threads: int = 0,
+        timeout: Optional[float] = None,
         show_progress: bool = False,
         verbose: bool = False,
     ):
@@ -394,6 +420,7 @@ class FastgSpan:
         self.min_num_vertices = min_num_vertices
         self.max_num_vertices = max_num_vertices
         self.num_threads = num_threads
+        self.timeout = timeout
         self.show_progress = show_progress
         self.verbose = verbose
 
@@ -402,11 +429,12 @@ class FastgSpan:
             min_support=min_support,
             max_vertices=max_num_vertices,
             num_threads=num_threads,
+            timeout=timeout,
             show_progress=show_progress,
             verbose=verbose,
         )
 
-    # ----- pattern description (standalone, no gSpan dependency) -----
+    # ----- pattern utilities -----
 
     @staticmethod
     def _pattern_to_description(pattern: Dict[str, Any]) -> str:
@@ -426,7 +454,8 @@ class FastgSpan:
             lines.append(f"({frm}, {to}, {el})")
         return "\n".join(lines)
 
-    def _pattern_to_networkx(self, pattern: Dict[str, Any]) -> nx.Graph:
+    @staticmethod
+    def pattern_to_graph(pattern: Dict[str, Any]) -> nx.Graph:
         """Convert a mined pattern dict into a NetworkX graph."""
         g = nx.Graph()
         for vid, vlb in pattern.get("vertices", []):
@@ -439,6 +468,9 @@ class FastgSpan:
 
     def run_from_graphs(self, graphs: List[nx.Graph]) -> pd.DataFrame:
         """Mine frequent subgraphs from *graphs* and return a DataFrame."""
+        if not graphs:
+            return pd.DataFrame(columns=_RESULT_COLUMNS)
+
         patterns = self._gbolt.mine_frequent_subgraphs(graphs)
 
         data = []
@@ -448,7 +480,7 @@ class FastgSpan:
                 continue
             if num_vertices < self.min_num_vertices:
                 continue
-            if num_vertices > self.max_num_vertices:
+            if self.max_num_vertices > 0 and num_vertices > self.max_num_vertices:
                 continue
 
             data.append(
@@ -459,20 +491,11 @@ class FastgSpan:
                     "pattern_id": pattern["pattern_id"],
                     "vertices": pattern["vertices"],
                     "edges": pattern["edges"],
+                    "graph_ids": pattern.get("graph_occurrences"),
                 }
             )
 
-        return pd.DataFrame(
-            data,
-            columns=[
-                "support",
-                "description",
-                "num_vert",
-                "pattern_id",
-                "vertices",
-                "edges",
-            ],
-        )
+        return pd.DataFrame(data, columns=_RESULT_COLUMNS)
 
     def run_from_file(self, filepath: str) -> pd.DataFrame:
         """Read graphs from a gSpan-format file and mine frequent subgraphs."""

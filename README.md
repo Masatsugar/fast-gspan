@@ -87,8 +87,9 @@ High-level interface. Constructor parameters:
 | `gbolt_path` | `str \| None` | `None` | Path to gBolt executable. Auto-detected if `None`. |
 | `min_support` | `int` | `2` | Minimum absolute support threshold. |
 | `min_num_vertices` | `int` | `1` | Minimum vertices in a pattern. |
-| `max_num_vertices` | `int` | `10` | Maximum vertices in a pattern. |
+| `max_num_vertices` | `int` | `0` | Maximum vertices in a pattern (0 = unlimited). |
 | `num_threads` | `int` | `0` | Number of OpenMP threads (0 = all cores). |
+| `timeout` | `float \| None` | `None` | Timeout in seconds for gBolt execution (None = unlimited). |
 | `show_progress` | `bool` | `False` | Show progress during mining. |
 | `verbose` | `bool` | `False` | Print debug information. |
 
@@ -96,6 +97,7 @@ Methods:
 
 - **`run_from_graphs(graphs)`** -- Mine from a list of `nx.Graph`. Returns `pd.DataFrame`.
 - **`run_from_file(filepath)`** -- Read a gSpan-format file and mine. Returns `pd.DataFrame`.
+- **`pattern_to_graph(pattern)`** -- Convert a pattern dict (from raw results) to `nx.Graph`. Static method.
 
 ### `GBoltWrapper`
 
@@ -115,6 +117,7 @@ The returned DataFrame has the following columns:
 | `pattern_id` | Pattern ID assigned by gBolt |
 | `vertices` | List of `(vertex_id, label)` tuples |
 | `edges` | List of `(from, to, edge_label)` tuples |
+| `graph_ids` | List of graph indices where this pattern occurs (if available) |
 
 ## gSpan-format file
 

@@ -1,9 +1,17 @@
 """Tests for fast_gspan standalone package."""
 
-import pytest
-import networkx as nx
+import warnings
 
-from fast_gspan.gbolt_wrapper import GBoltWrapper, FastgSpan, _read_gspan_file, _find_vendor_gbolt
+import networkx as nx
+import pandas as pd
+import pytest
+
+from fast_gspan.gbolt_wrapper import (
+    FastgSpan,
+    GBoltWrapper,
+    _find_vendor_gbolt,
+    _read_gspan_file,
+)
 
 
 def _sample_graphs() -> list[nx.Graph]:
@@ -52,6 +60,7 @@ def _duplicate_graphs(n: int = 10) -> list[nx.Graph]:
 
 # ---- unit tests (no gBolt binary required) ----
 
+
 class TestParseOutput:
     """Test gBolt output parsing without requiring the binary."""
 
@@ -70,6 +79,7 @@ class TestParseOutput:
         assert p["vertices"] == [(0, 1), (1, 2)]
         assert p["edges"] == [(0, 1, 3)]
         assert p["dfs_codes"] == [(0, 1, 1, 3, 2)]
+        assert p["graph_occurrences"] == [0, 1, 2, 3, 4]
 
     def test_parse_legacy_format(self):
         text = (
@@ -131,14 +141,54 @@ class TestPatternDescription:
         assert "(0, 1, 3)" in desc
 
 
+class TestPatternToGraph:
+    def test_converts_to_networkx(self):
+        pattern = {
+            "vertices": [(0, 1), (1, 2), (2, 3)],
+            "edges": [(0, 1, 5), (1, 2, 6)],
+        }
+        g = FastgSpan.pattern_to_graph(pattern)
+        assert isinstance(g, nx.Graph)
+        assert g.number_of_nodes() == 3
+        assert g.number_of_edges() == 2
+        assert g.nodes[0]["label"] == 1
+        assert g[0][1]["label"] == 5
+
+
+class TestEmptyInput:
+    def test_empty_graphs_wrapper(self):
+        """GBoltWrapper.mine_frequent_subgraphs returns [] for empty input."""
+        wrapper = object.__new__(GBoltWrapper)
+        wrapper._gbolt_path = "/nonexistent"
+        wrapper.min_support = 2
+        wrapper.max_vertices = 0
+        wrapper.num_threads = 0
+        wrapper.timeout = None
+        wrapper.show_progress = False
+        wrapper.verbose = False
+        assert wrapper.mine_frequent_subgraphs([]) == []
+
+    def test_empty_graphs_fastgspan(self):
+        """FastgSpan.run_from_graphs returns empty DataFrame for empty input."""
+        fgs = object.__new__(FastgSpan)
+        fgs.min_support = 2
+        fgs.min_num_vertices = 1
+        fgs.max_num_vertices = 0
+        fgs._gbolt = None
+        df = fgs.run_from_graphs([])
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 0
+        assert "graph_ids" in df.columns
+
+
 # ---- integration tests (require gBolt binary) ----
 
+
 def _gbolt_available() -> bool:
-    from fast_gspan.gbolt_wrapper import _find_vendor_gbolt
     if _find_vendor_gbolt():
         return True
-    # Also check common paths
     import os
+
     for p in ["./gBolt/build/gbolt", "../gBolt/build/gbolt"]:
         if os.path.exists(p):
             return True
@@ -151,9 +201,15 @@ class TestIntegration:
         graphs = _duplicate_graphs(10)
         fgs = FastgSpan(min_support=2, max_num_vertices=5, verbose=False)
         df = fgs.run_from_graphs(graphs)
-        assert isinstance(df, type(df))  # pd.DataFrame
+        assert isinstance(df, pd.DataFrame)
         assert "support" in df.columns
         assert "description" in df.columns
+        assert "graph_ids" in df.columns
+        assert len(df) > 0
+
+    def test_unlimited_vertices(self):
+        graphs = _duplicate_graphs(10)
+        df = FastgSpan(min_support=2).run_from_graphs(graphs)
         assert len(df) > 0
 
     def test_max_vertices_filtering(self):
@@ -161,6 +217,12 @@ class TestIntegration:
         df_small = FastgSpan(min_support=2, max_num_vertices=2).run_from_graphs(graphs)
         df_large = FastgSpan(min_support=2, max_num_vertices=5).run_from_graphs(graphs)
         assert len(df_small) <= len(df_large)
+
+    def test_timeout_parameter(self):
+        graphs = _duplicate_graphs(10)
+        fgs = FastgSpan(min_support=2, max_num_vertices=5, timeout=60.0)
+        df = fgs.run_from_graphs(graphs)
+        assert len(df) > 0
 
     def test_run_from_file(self, tmp_path):
         graphs = _duplicate_graphs(10)
@@ -176,3 +238,13 @@ class TestIntegration:
 
         df = FastgSpan(min_support=2, max_num_vertices=5).run_from_file(filepath)
         assert len(df) > 0
+
+    def test_pattern_to_graph_integration(self):
+        graphs = _duplicate_graphs(10)
+        fgs = FastgSpan(min_support=2, max_num_vertices=5)
+        df = fgs.run_from_graphs(graphs)
+        assert len(df) > 0
+        pattern = {"vertices": df.iloc[0]["vertices"], "edges": df.iloc[0]["edges"]}
+        g = FastgSpan.pattern_to_graph(pattern)
+        assert isinstance(g, nx.Graph)
+        assert g.number_of_nodes() == df.iloc[0]["num_vert"]

@@ -22,7 +22,7 @@ jobs:
             platform: macos-arm64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install build tools (Linux)
         if: runner.os == 'Linux'
@@ -32,7 +32,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install cmake libomp
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -65,7 +65,7 @@ jobs:
           print(f'OK: {len(df)} patterns mined')
           "
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: wheel-${{ matrix.platform }}
           path: dist/*.whl
@@ -74,9 +74,9 @@ jobs:
     name: Build sdist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -85,7 +85,7 @@ jobs:
           pip install build
           python -m build --sdist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: sdist
           path: dist/*.tar.gz
@@ -100,7 +100,7 @@ jobs:
       id-token: write  # for trusted publishing
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true
