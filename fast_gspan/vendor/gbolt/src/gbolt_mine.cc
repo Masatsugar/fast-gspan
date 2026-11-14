@@ -173,11 +173,19 @@ void GBolt::mine_subgraph(
   // Enumerate backward paths and forward paths by different rules
   ProjectionMapBackward projection_map_backward;
   ProjectionMapForward projection_map_forward;
+  // Modified: 2026-11-14 - Do not build extensions that can never be reported:
+  // forward extensions of a pattern already at the vertex limit (here), and
+  // extensions whose DFS code is not minimal (inside enumerate).
+  bool enumerate_forward =
+    max_num_vertices_ <= 0 || current_num_vertices < max_num_vertices_;
   enumerate(graphs, dfs_codes, projection, *right_most_path,
-    projection_map_backward, projection_map_forward);
+    projection_map_backward, projection_map_forward, enumerate_forward);
   // Recursive mining: first backward, last backward, and then last forward to the first forward
   for (auto it = projection_map_backward.begin(); it != projection_map_backward.end(); ++it) {
-    Projection &projection = it->second;
+    if (!it->second.minimal) {
+      continue;
+    }
+    Projection &projection = it->second.projection;
     int nsupport = count_support(projection);
     if (nsupport < nsupport_) {
       continue;
@@ -202,7 +210,10 @@ void GBolt::mine_subgraph(
     #endif
   }
   for (auto it = projection_map_forward.rbegin(); it != projection_map_forward.rend(); ++it) {
-    Projection &projection = it->second;
+    if (!it->second.minimal) {
+      continue;
+    }
+    Projection &projection = it->second.projection;
     int nsupport = count_support(projection);
     if (nsupport < nsupport_) {
       continue;

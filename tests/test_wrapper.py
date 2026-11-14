@@ -1,5 +1,6 @@
 """Tests for fast_gspan standalone package."""
 
+import random
 import warnings
 
 import networkx as nx
@@ -65,6 +66,73 @@ def _clique(n: int) -> nx.Graph:
     nx.set_node_attributes(g, 1, "label")
     nx.set_edge_attributes(g, 1, "label")
     return g
+
+
+def _random_graphs(
+    seed: int,
+    n_graphs: int = 12,
+    n_nodes: int = 6,
+    n_edges: int = 7,
+    n_vertex_labels: int = 2,
+    n_edge_labels: int = 2,
+) -> list[nx.Graph]:
+    """Create small random labelled graphs (deterministic for a given seed)."""
+    rng = random.Random(seed)
+    pairs = [(i, j) for i in range(n_nodes) for j in range(i + 1, n_nodes)]
+    graphs = []
+    for _ in range(n_graphs):
+        g = nx.Graph()
+        for v in range(n_nodes):
+            g.add_node(v, label=rng.randrange(n_vertex_labels))
+        for u, v in rng.sample(pairs, n_edges):
+            g.add_edge(u, v, label=rng.randrange(n_edge_labels))
+        graphs.append(g)
+    return graphs
+
+
+def _same_label(a: dict, b: dict) -> bool:
+    return a["label"] == b["label"]
+
+
+def _isomorphic(a: nx.Graph, b: nx.Graph) -> bool:
+    return (
+        a.number_of_nodes() == b.number_of_nodes()
+        and a.number_of_edges() == b.number_of_edges()
+        and nx.is_isomorphic(a, b, node_match=_same_label, edge_match=_same_label)
+    )
+
+
+def _brute_force_frequent(
+    graphs: list[nx.Graph], min_support: int, max_vertices: int
+) -> list[tuple[nx.Graph, int]]:
+    """Reference miner, independent of gBolt.
+
+    Enumerates every connected subgraph (as an edge subset) of every graph,
+    groups them by isomorphism and counts the graphs each group occurs in.
+    """
+    classes: list[tuple[nx.Graph, set[int]]] = []
+    for gid, g in enumerate(graphs):
+        seen = set()
+        frontier = [frozenset([frozenset(e)]) for e in g.edges()]
+        while frontier:
+            edges = frontier.pop()
+            if edges in seen:
+                continue
+            seen.add(edges)
+            nodes = set().union(*edges)
+            if max_vertices and len(nodes) > max_vertices:
+                continue
+            sub = nx.Graph(g.edge_subgraph([tuple(e) for e in edges]))
+            for rep, ids in classes:
+                if _isomorphic(rep, sub):
+                    ids.add(gid)
+                    break
+            else:
+                classes.append((sub, {gid}))
+            for e in map(frozenset, g.edges(nodes)):
+                if e not in edges:
+                    frontier.append(edges | {e})
+    return [(rep, len(ids)) for rep, ids in classes if len(ids) >= min_support]
 
 
 # ---- unit tests (no gBolt binary required) ----
@@ -328,3 +396,37 @@ class TestIntegration:
             warnings.simplefilter("error", IncompleteResultWarning)
             with pytest.raises(IncompleteResultWarning):
                 fgs.run_from_graphs(graphs)
+
+    @pytest.mark.parametrize("max_vertices", [0, 3, 4])
+    @pytest.mark.parametrize(
+        "graph_options",
+        [
+            {"seed": 0},
+            {"seed": 1},
+            # Uniform labels: many automorphisms and duplicate DFS codes
+            {"seed": 2, "n_vertex_labels": 1, "n_edge_labels": 1},
+        ],
+    )
+    def test_matches_brute_force_reference(self, graph_options, max_vertices):
+        """The mined patterns and supports equal an independent enumeration."""
+        graphs = _random_graphs(**graph_options)
+        reference = _brute_force_frequent(graphs, 3, max_vertices)
+        assert len(reference) >= 3  # edge, path and triangle at the very least
+
+        df = FastgSpan(min_support=3, max_num_vertices=max_vertices).run_from_graphs(
+            graphs
+        )
+
+        unmatched = list(reference)
+        for row in df.itertuples():
+            mined = FastgSpan.pattern_to_graph(
+                {"vertices": row.vertices, "edges": row.edges}
+            )
+            for i, (rep, support) in enumerate(unmatched):
+                if _isomorphic(rep, mined):
+                    assert row.support == support
+                    del unmatched[i]
+                    break
+            else:
+                pytest.fail(f"not frequent, or mined twice: {row.description!r}")
+        assert not unmatched, f"{len(unmatched)} frequent patterns were not mined"

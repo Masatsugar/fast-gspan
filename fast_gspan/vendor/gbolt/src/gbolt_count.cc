@@ -54,9 +54,11 @@ bool GBolt::is_min(const DfsCodes &dfs_codes) {
   #endif
   Graph *min_graph = instance->min_graph;
   DfsCodes *min_dfs_codes = instance->min_dfs_codes;
-  History *history = instance->history;
+  // Dedicated scratch: is_min() is also called from enumerate(), which is
+  // using instance->history and instance->right_most_path at that point.
+  History *history = instance->min_history;
   MinProjection *min_projection = instance->min_projection;
-  Path<int> *right_most_path = instance->right_most_path;
+  Path<int> *right_most_path = instance->min_right_most_path;
 
   // Clear cache data structures
   min_graph->clear();

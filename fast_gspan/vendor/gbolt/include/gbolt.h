@@ -20,6 +20,10 @@ struct gbolt_instance_t {
   Output *output = NULL;
   Path<int> *right_most_path = NULL;
   MinProjection *min_projection = NULL;
+  // Scratch owned by is_min(), so that it can run while a projection is being
+  // enumerated with history / right_most_path
+  History *min_history = NULL;
+  Path<int> *min_right_most_path = NULL;
 
   ~gbolt_instance_t() {
     delete this->min_graph;
@@ -28,6 +32,8 @@ struct gbolt_instance_t {
     delete this->output;
     delete this->right_most_path;
     delete this->min_projection;
+    delete this->min_history;
+    delete this->min_right_most_path;
   }
 };
 
@@ -62,9 +68,18 @@ class GBolt {
   }
 
  private:
+  // Embeddings of one candidate extension. `minimal` is decided when the
+  // extension is first seen: embeddings of a non-minimal (duplicate) DFS code
+  // are never stored.
+  struct candidate_t {
+    candidate_t() : minimal(false) {}
+    Projection projection;
+    bool minimal;
+  };
+
   typedef map<dfs_code_t, Projection, dfs_code_project_compare_t> ProjectionMap;
-  typedef map<dfs_code_t, Projection, dfs_code_backward_compare_t> ProjectionMapBackward;
-  typedef map<dfs_code_t, Projection, dfs_code_forward_compare_t> ProjectionMapForward;
+  typedef map<dfs_code_t, candidate_t, dfs_code_backward_compare_t> ProjectionMapBackward;
+  typedef map<dfs_code_t, candidate_t, dfs_code_forward_compare_t> ProjectionMapForward;
 
  private:
   // Mine
@@ -117,7 +132,25 @@ class GBolt {
     const Projection &projection,
     const Path<int> &right_most_path,
     ProjectionMapBackward &projection_map_backward,
-    ProjectionMapForward &projection_map_forward);
+    ProjectionMapForward &projection_map_forward,
+    bool enumerate_forward);
+
+  // Returns where to store an embedding of the extension `dfs_code`, or NULL
+  // when extending `dfs_codes` by it does not give a minimal DFS code.
+  template <typename CandidateMap>
+  Projection *candidate_projection(
+    CandidateMap &candidates,
+    const dfs_code_t &dfs_code,
+    const DfsCodes &dfs_codes) {
+    auto it = candidates.find(dfs_code);
+    if (it == candidates.end()) {
+      it = candidates.insert(std::make_pair(dfs_code, candidate_t())).first;
+      DfsCodes extended(dfs_codes);
+      extended.emplace_back(&(it->first));
+      it->second.minimal = is_min(extended);
+    }
+    return it->second.minimal ? &(it->second.projection) : NULL;
+  }
 
   bool get_forward_init(
     const vertex_t &vertex,

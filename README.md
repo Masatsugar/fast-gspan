@@ -112,7 +112,9 @@ By default every pattern is extended, however many embeddings it has, so no patt
 
 Versions up to 0.1.3 silently dropped any pattern of two or more edges with more than 500,000 embeddings, together with all of its supergraphs. On large databases this removed even the most frequent patterns. If you mined tens of thousands of graphs with an earlier version, re-run with this one.
 
-The embedding lists of very frequent patterns can be large. If mining runs out of memory, `max_projection_size` bounds them:
+Memory grows with the number of threads, because each thread holds the embedding lists of the patterns it is extending. If mining runs out of memory, lower `num_threads` first: the result stays complete and only the run time grows. On a dense benchmark (200 graphs, 30 vertices, average degree 6, `max_num_vertices=7`), 32 threads took 11 s and 7.3 GB, 8 threads 20 s and 2.5 GB, and 1 thread 104 s and 0.6 GB.
+
+If that is not enough, `max_projection_size` bounds the embedding lists at the cost of completeness:
 
 ```python
 import warnings
@@ -169,6 +171,13 @@ This package bundles a modified fork of [gBolt](https://github.com/Jokeren/gBolt
 
 - **`-x, --max-vertices` option** -- Limits the maximum number of vertices in mined patterns. Allows early pruning during DFS exploration, reducing both runtime and memory usage.
 - **`--max-projection-size` option** -- Opt-in memory guard, off by default. Patterns of two or more edges with more embeddings than the limit are reported but not extended, and gBolt prints how many were affected to stderr. (Up to 0.1.3 this was a fixed, silent limit of 500,000.)
+
+### Memory and speed
+
+These changes do not alter the mined patterns:
+
+- Extensions that can never be reported are no longer built: forward extensions of a pattern already at `--max-vertices`, and extensions whose DFS code is not minimal.
+- The parsed input and the unpruned graphs are released before mining starts.
 
 ### Output format change
 

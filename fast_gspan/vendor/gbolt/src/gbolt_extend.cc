@@ -11,7 +11,8 @@ void GBolt::enumerate(
   const Projection &projection,
   const Path<int> &right_most_path,
   ProjectionMapBackward &projection_map_backward,
-  ProjectionMapForward &projection_map_forward) {
+  ProjectionMapForward &projection_map_forward,
+  bool enumerate_forward) {
   #ifdef GBOLT_SERIAL
   gbolt_instance_t *instance = gbolt_instances_;
   #else
@@ -25,6 +26,11 @@ void GBolt::enumerate(
 
     get_backward(projection[i], *history, graph, dfs_codes, right_most_path,
       projection_map_backward);
+    // Forward extensions add a vertex. A pattern already at the vertex limit
+    // can only grow by backward edges, so do not build them at all.
+    if (!enumerate_forward) {
+      continue;
+    }
     get_first_forward(projection[i], *history, graph, dfs_codes, right_most_path,
       projection_map_forward);
     get_other_forward(projection[i], *history, graph, dfs_codes, right_most_path,
@@ -71,8 +77,11 @@ void GBolt::get_backward(
         int to_id = dfs_codes[right_most_path[i - 1]]->from;
         dfs_code_t dfs_code(from_id, to_id,
           last_node->label, (last_node->edges[j]).label, from_node->label);
-        projection_map_backward[dfs_code].
-          emplace_back(graph.get_id(), &(last_node->edges[j]), &(prev_dfs));
+        Projection *candidate = candidate_projection(
+          projection_map_backward, dfs_code, dfs_codes);
+        if (candidate != NULL) {
+          candidate->emplace_back(graph.get_id(), &(last_node->edges[j]), &(prev_dfs));
+        }
       }
     }
   }
@@ -102,8 +111,11 @@ void GBolt::get_first_forward(
     int to_id = dfs_codes[right_most_path[0]]->to;
     dfs_code_t dfs_code(to_id, to_id + 1,
       last_node->label, edge->label, to_node->label);
-    projection_map_forward[dfs_code].
-      emplace_back(graph.get_id(), edge, &(prev_dfs));
+    Projection *candidate = candidate_projection(
+      projection_map_forward, dfs_code, dfs_codes);
+    if (candidate != NULL) {
+      candidate->emplace_back(graph.get_id(), edge, &(prev_dfs));
+    }
   }
 }
 
@@ -135,8 +147,11 @@ void GBolt::get_other_forward(
         int to_id = dfs_codes[right_most_path[0]]->to;
         dfs_code_t dfs_code(from_id, to_id + 1, cur_node->label,
           cur_node->edges[j].label, to_node->label);
-        projection_map_forward[dfs_code].
-          emplace_back(graph.get_id(), &(cur_node->edges[j]), &(prev_dfs));
+        Projection *candidate = candidate_projection(
+          projection_map_forward, dfs_code, dfs_codes);
+        if (candidate != NULL) {
+          candidate->emplace_back(graph.get_id(), &(cur_node->edges[j]), &(prev_dfs));
+        }
       }
     }
   }

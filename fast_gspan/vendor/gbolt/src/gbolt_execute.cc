@@ -2,6 +2,9 @@
 #include <database.h>
 #include <common.h>
 #include <algorithm>
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
 
 namespace gbolt {
 
@@ -19,9 +22,19 @@ void GBolt::execute() {
   nsupport_ = graphs.size() * support_;
   // TODO: find frequent edges
   find_frequent_nodes_and_edges(graphs);
+  // Modified: 2026-11-14 - Mining only needs the pruned graphs. Release the
+  // unpruned graphs here and the parsed input below; together they are
+  // several times larger than the pruned graphs.
+  vector<Graph>().swap(graphs);
 
   // Phase 2: prune the initial graph by frequent labels
   database->construct_graphs(frequent_vertex_labels_, frequent_edge_labels_, prune_graphs);
+  database->release_input();
+  #ifdef __GLIBC__
+  // The freed blocks sit below the pruned graphs on the heap, so glibc does
+  // not return them to the OS unless asked to.
+  malloc_trim(0);
+  #endif
   #ifdef GBOLT_PERFORMANCE
   CPU_TIMER_END(elapsed, time_start, time_end);
   LOG_INFO("gbolt construct graph time: %f", elapsed);
@@ -66,6 +79,8 @@ void GBolt::init_instances(const vector<Graph> &graphs) {
     gbolt_instances_[i].min_dfs_codes = new DfsCodes();
     gbolt_instances_[i].right_most_path = new Path<int>(DEFAULT_PATH_LEN);
     gbolt_instances_[i].min_projection = new MinProjection(DEFAULT_PATH_LEN);
+    gbolt_instances_[i].min_history = new History(max_edges, max_vertice);
+    gbolt_instances_[i].min_right_most_path = new Path<int>(DEFAULT_PATH_LEN);
   }
 }
 

@@ -32,6 +32,11 @@ class Database {
   #endif
     vector<Graph> &graphs);
 
+  // Release the parsed input once every graph has been constructed
+  void release_input() {
+    vector<vector<string> >().swap(input_);
+  }
+
   ~Database() {
     delete instance_;
   }
