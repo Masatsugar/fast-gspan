@@ -2,9 +2,9 @@
 
 from importlib.metadata import version, PackageNotFoundError
 
-from .gbolt_wrapper import FastgSpan, GBoltWrapper
+from .gbolt_wrapper import FastgSpan, GBoltWrapper, IncompleteResultWarning
 
-__all__ = ["GBoltWrapper", "FastgSpan"]
+__all__ = ["GBoltWrapper", "FastgSpan", "IncompleteResultWarning"]
 
 try:
     __version__ = version("fast-gspan")

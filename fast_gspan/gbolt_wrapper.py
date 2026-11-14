@@ -5,6 +5,7 @@ Standalone version with no dependency on neural_graph_mining.
 
 import glob
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,19 @@ from typing import Any, Dict, List, Optional
 
 import networkx as nx
 import pandas as pd
+
+
+class IncompleteResultWarning(RuntimeWarning):
+    """gBolt returned only part of the frequent patterns.
+
+    Issued when ``max_projection_size`` stopped at least one pattern from being
+    extended. Turn it into an error with
+    ``warnings.simplefilter("error", IncompleteResultWarning)``.
+    """
+
+
+# Line printed to stderr by the bundled gBolt when max_projection_size was hit.
+_INCOMPLETE_RE = re.compile(r"incomplete result: (\d+) pattern")
 
 
 class ProgressMonitor:
@@ -104,7 +118,14 @@ def _vendor_lib_env() -> dict:
 
 
 class GBoltWrapper:
-    """Low-level Python wrapper for the gBolt binary."""
+    """Low-level Python wrapper for the gBolt binary.
+
+    ``max_projection_size`` is an opt-in memory guard: a pattern of two or more
+    edges with more embeddings than this is still reported but not extended, so
+    its supergraphs may be missing and an :class:`IncompleteResultWarning` is
+    issued. The default ``0`` means unlimited: no pattern is lost for having
+    too many embeddings.
+    """
 
     def __init__(
         self,
@@ -115,6 +136,7 @@ class GBoltWrapper:
         timeout: Optional[float] = None,
         show_progress: bool = False,
         verbose: bool = False,
+        max_projection_size: int = 0,
     ):
         self.min_support = min_support
         self.max_vertices = max_vertices
@@ -122,6 +144,7 @@ class GBoltWrapper:
         self.timeout = timeout
         self.show_progress = show_progress
         self.verbose = verbose
+        self.max_projection_size = max_projection_size
         self._gbolt_path = self._find_gbolt_executable(gbolt_path)
 
         if not self._gbolt_path:
@@ -323,6 +346,12 @@ class GBoltWrapper:
 
         return unique
 
+    @staticmethod
+    def _count_unextended_patterns(stderr: Optional[str]) -> int:
+        """Return how many patterns gBolt reported as not extended (0 = complete)."""
+        match = _INCOMPLETE_RE.search(stderr or "")
+        return int(match.group(1)) if match else 0
+
     # ----- main entry point -----
 
     def mine_frequent_subgraphs(
@@ -358,6 +387,9 @@ class GBoltWrapper:
 
             if self.max_vertices > 0:
                 cmd.extend(["-x", str(self.max_vertices)])
+
+            if self.max_projection_size > 0:
+                cmd.extend(["--max-projection-size", str(self.max_projection_size)])
 
             env = _vendor_lib_env()
             if self.num_threads > 0:
@@ -400,8 +432,6 @@ class GBoltWrapper:
                 if progress_monitor:
                     progress_monitor.stop(len(output_patterns))
 
-                return output_patterns
-
             except subprocess.TimeoutExpired:
                 if progress_monitor:
                     progress_monitor.stop(0)
@@ -413,6 +443,21 @@ class GBoltWrapper:
                 if progress_monitor:
                     progress_monitor.stop(0)
                 raise RuntimeError(f"Error running gBolt: {e}")
+
+            # Warn outside the try block so that a caller who escalates this
+            # warning to an error receives it unwrapped.
+            unextended = self._count_unextended_patterns(result.stderr)
+            if unextended:
+                warnings.warn(
+                    f"gBolt did not extend {unextended} frequent pattern(s) with more "
+                    f"than max_projection_size={self.max_projection_size} embeddings; "
+                    f"their supergraphs may be missing from the result. Raise "
+                    f"max_projection_size, or use 0 (unlimited) to extend every pattern.",
+                    IncompleteResultWarning,
+                    stacklevel=2,
+                )
+
+            return output_patterns
 
 
 _RESULT_COLUMNS = [
@@ -431,6 +476,10 @@ class FastgSpan:
 
     Provides a convenient API for frequent subgraph mining. If gBolt is not
     available an informative error is raised (no silent fallback).
+
+    By default no pattern is lost for having too many embeddings. Setting
+    ``max_projection_size`` trades that for bounded memory; see
+    :class:`GBoltWrapper`.
     """
 
     def __init__(
@@ -443,6 +492,7 @@ class FastgSpan:
         timeout: Optional[float] = None,
         show_progress: bool = False,
         verbose: bool = False,
+        max_projection_size: int = 0,
     ):
         self.min_support = min_support
         self.min_num_vertices = min_num_vertices
@@ -451,6 +501,7 @@ class FastgSpan:
         self.timeout = timeout
         self.show_progress = show_progress
         self.verbose = verbose
+        self.max_projection_size = max_projection_size
 
         self._gbolt = GBoltWrapper(
             gbolt_path=gbolt_path,
@@ -460,6 +511,7 @@ class FastgSpan:
             timeout=timeout,
             show_progress=show_progress,
             verbose=verbose,
+            max_projection_size=max_projection_size,
         )
 
     # ----- pattern utilities -----

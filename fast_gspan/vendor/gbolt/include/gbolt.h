@@ -34,11 +34,21 @@ struct gbolt_instance_t {
 class GBolt {
  public:
   // Modified: 2025-12-07 - Added max_vertices parameter
-  GBolt(const string &output_file, double support, int max_vertices = 0) :
+  // Modified: 2026-11-14 - Added max_projection_size parameter (0 = unlimited)
+  GBolt(const string &output_file, double support, int max_vertices = 0,
+    size_t max_projection_size = 0) :
     output_file_(output_file), support_(support), max_num_vertices_(max_vertices),
+    max_projection_size_(max_projection_size), num_unextended_patterns_(0),
     output_frequent_nodes_(0), gbolt_instances_(0) {}
 
   void execute();
+
+  // Number of frequent patterns that were reported but not extended because
+  // their projection exceeded max_projection_size. A non-zero value means the
+  // mining result is incomplete.
+  long num_unextended_patterns() const {
+    return num_unextended_patterns_;
+  }
 
   void save(bool output_parent = false, bool output_pattern = false, bool output_frequent_nodes = false);
 
@@ -70,7 +80,13 @@ class GBolt {
     DfsCodes &dfs_codes,
     int prev_nsupport,
     int prev_thread_id,
-    int prev_graph_id);
+    int prev_graph_id,
+    bool extend = true);
+
+  // True when max_projection_size is set and this projection exceeds it
+  bool exceeds_projection_limit(const Projection &projection) const {
+    return max_projection_size_ > 0 && projection.size() > max_projection_size_;
+  }
 
   // Extend
   void build_right_most_path(const DfsCodes &dfs_codes, Path<int> &right_most_path) {
@@ -186,6 +202,11 @@ class GBolt {
   string output_file_;
   double support_;
   int max_num_vertices_;  // Modified: 2025-12-07 - Added for vertex count filtering
+  // Opt-in memory guard: patterns of two or more edges with more embeddings
+  // than this are reported but not extended (0 = unlimited, i.e. complete
+  // mining). Single-edge patterns are always extended.
+  size_t max_projection_size_;
+  long num_unextended_patterns_;
   int nsupport_;
   Output *output_frequent_nodes_;
   gbolt_instance_t *gbolt_instances_;

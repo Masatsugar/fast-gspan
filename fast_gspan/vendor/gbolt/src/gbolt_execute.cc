@@ -3,9 +3,6 @@
 #include <common.h>
 #include <algorithm>
 
-// Maximum projection size to prevent memory explosion on dense graphs
-#define MAX_PROJECTION_SIZE 500000
-
 namespace gbolt {
 
 void GBolt::execute() {

@@ -15,6 +15,11 @@ int main(int argc, char *argv[]) {
     ("o,output", "Output gbolt mining results", cxxopts::value<std::string>()->default_value(""))
     ("s,support", "Minimum subgraph frequency: (0.0, 1.0]", cxxopts::value<double>()->default_value("1.0"))
     ("x,max-vertices", "Maximum number of vertices in patterns (0 = unlimited)", cxxopts::value<int>()->default_value("0"))
+    ("max-projection-size",
+     "Do not extend patterns of 2+ edges with more embeddings than this "
+     "(0 = unlimited). Bounds memory, but the result is incomplete whenever "
+     "the limit is hit",
+     cxxopts::value<uint64_t>()->default_value("0"))
     ("m,mark", "Graph data separator", cxxopts::value<std::string>()->default_value(" "))
     ("p,parents", "Output subgraph parent ids",
      cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
@@ -40,6 +45,7 @@ int main(int argc, char *argv[]) {
   std::string output = result["o"].count() ? result["o"].as<std::string>() : result["output"].as<std::string>();
   double support = result["s"].count() ? result["s"].as<double>() : result["support"].as<double>();
   int max_vertices = result["x"].count() ? result["x"].as<int>() : result["max-vertices"].as<int>();  // Modified: 2025-12-07
+  uint64_t max_projection_size = result["max-projection-size"].as<uint64_t>();  // Modified: 2026-11-14
   std::string mark = result["m"].count() ? result["m"].as<std::string>() : result["mark"].as<std::string>();
   bool parents = result["p"].count() ? result["p"].as<bool>() : result["parents"].as<bool>();
   bool dfs = result["d"].count() ? result["d"].as<bool>() : result["dfs"].as<bool>();
@@ -61,12 +67,21 @@ int main(int argc, char *argv[]) {
   CPU_TIMER_START(elapsed, time_start);
   #endif
   // Construct algorithm - Modified: 2025-12-07 - Added max_vertices parameter
-  gbolt::GBolt gbolt(output, support, max_vertices);
+  gbolt::GBolt gbolt(output, support, max_vertices, max_projection_size);
   gbolt.execute();
   #ifdef GBOLT_PERFORMANCE
   CPU_TIMER_END(elapsed, time_start, time_end);
   LOG_INFO("gbolt execute time: %f", elapsed);
   #endif
+  // Modified: 2026-11-14 - Never truncate silently. The Python wrapper parses
+  // this line, so keep the "incomplete result: <N> pattern(s)" part stable.
+  if (gbolt.num_unextended_patterns() > 0) {
+    fprintf(stderr,
+      "gbolt: incomplete result: %ld pattern(s) exceeded --max-projection-size=%llu "
+      "and were not extended; their supergraphs may be missing\n",
+      gbolt.num_unextended_patterns(),
+      static_cast<unsigned long long>(max_projection_size));
+  }
   // Save results
   if (output.size() != 0) {
     #ifdef GBOLT_PERFORMANCE

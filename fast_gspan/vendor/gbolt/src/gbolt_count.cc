@@ -10,7 +10,8 @@ int GBolt::count_support(const Projection &projection) {
   int prev_id = -1;
   int size = 0;
 
-  for (auto i = 0; i < projection.size(); ++i) {
+  // size_t: projections are unbounded by default and may exceed INT_MAX
+  for (size_t i = 0; i < projection.size(); ++i) {
     if (prev_id != projection[i].id) {
       prev_id = projection[i].id;
       ++size;

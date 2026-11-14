@@ -18,7 +18,8 @@ void GBolt::enumerate(
   gbolt_instance_t *instance = gbolt_instances_ + omp_get_thread_num();
   #endif
   History *history = instance->history;
-  for (auto i = 0; i < projection.size(); ++i) {
+  // size_t: projections are unbounded by default and may exceed INT_MAX
+  for (size_t i = 0; i < projection.size(); ++i) {
     const Graph &graph = graphs[projection[i].id];
     history->build(projection[i], graph);
 

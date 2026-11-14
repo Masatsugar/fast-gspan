@@ -92,6 +92,7 @@ High-level interface. Constructor parameters:
 | `timeout` | `float \| None` | `None` | Timeout in seconds for gBolt execution (None = unlimited). |
 | `show_progress` | `bool` | `False` | Show progress during mining. |
 | `verbose` | `bool` | `False` | Print debug information. |
+| `max_projection_size` | `int` | `0` | Opt-in memory guard (0 = unlimited). See [Completeness and memory](#completeness-and-memory). |
 
 Methods:
 
@@ -104,6 +105,29 @@ Methods:
 Low-level wrapper around the gBolt binary. Use this if you need direct access to raw pattern dicts.
 
 - **`mine_frequent_subgraphs(graphs)`** -- Returns `list[dict]` with keys: `pattern_id`, `support`, `vertices`, `edges`, `dfs_codes`, `graph_data`.
+
+## Completeness and memory
+
+By default every pattern is extended, however many embeddings it has, so no pattern is lost for being too frequent.
+
+Versions up to 0.1.3 silently dropped any pattern of two or more edges with more than 500,000 embeddings, together with all of its supergraphs. On large databases this removed even the most frequent patterns. If you mined tens of thousands of graphs with an earlier version, re-run with this one.
+
+The embedding lists of very frequent patterns can be large. If mining runs out of memory, `max_projection_size` bounds them:
+
+```python
+import warnings
+from fast_gspan import FastgSpan, IncompleteResultWarning
+
+fgs = FastgSpan(min_support=10, max_num_vertices=8, max_projection_size=500_000)
+df = fgs.run_from_graphs(graphs)  # warns with IncompleteResultWarning if the limit is hit
+
+# Treat an incomplete result as an error instead
+warnings.simplefilter("error", IncompleteResultWarning)
+```
+
+A pattern of two or more edges with more embeddings than the limit is still reported, with its exact support, but is not extended, so its supergraphs may be missing. Whenever this happens an `IncompleteResultWarning` states how many patterns were affected. Single-edge patterns are always extended.
+
+**Known limitation:** a `min_support` below 1% of the number of graphs is raised to 1% without a warning, so patterns rarer than 1% are not returned.
 
 ## Output format
 
@@ -144,7 +168,7 @@ This package bundles a modified fork of [gBolt](https://github.com/Jokeren/gBolt
 ### New features
 
 - **`-x, --max-vertices` option** -- Limits the maximum number of vertices in mined patterns. Allows early pruning during DFS exploration, reducing both runtime and memory usage.
-- **Projection size guard (`MAX_PROJECTION_SIZE`)** -- Skips projections exceeding 500,000 entries to prevent memory explosion on dense graphs.
+- **`--max-projection-size` option** -- Opt-in memory guard, off by default. Patterns of two or more edges with more embeddings than the limit are reported but not extended, and gBolt prints how many were affected to stderr. (Up to 0.1.3 this was a fixed, silent limit of 500,000.)
 
 ### Output format change
 

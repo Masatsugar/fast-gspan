@@ -9,6 +9,7 @@ import pytest
 from fast_gspan.gbolt_wrapper import (
     FastgSpan,
     GBoltWrapper,
+    IncompleteResultWarning,
     _find_vendor_gbolt,
     _read_gspan_file,
 )
@@ -56,6 +57,14 @@ def _duplicate_graphs(n: int = 10) -> list[nx.Graph]:
     """Create *n* copies of each sample graph so min_support thresholds work."""
     base = _sample_graphs()
     return base * n
+
+
+def _clique(n: int) -> nx.Graph:
+    """Complete graph on *n* vertices with uniform labels (many embeddings)."""
+    g = nx.complete_graph(n)
+    nx.set_node_attributes(g, 1, "label")
+    nx.set_edge_attributes(g, 1, "label")
+    return g
 
 
 # ---- unit tests (no gBolt binary required) ----
@@ -109,6 +118,22 @@ class TestParseOutput:
         result = GBoltWrapper._deduplicate_patterns([p1, p2])
         assert len(result) == 1
         assert result[0]["support"] == 8
+
+
+class TestIncompleteResultParsing:
+    """Test detection of gBolt's incomplete-result report on stderr."""
+
+    def test_detects_unextended_patterns(self):
+        stderr = (
+            "gbolt: incomplete result: 12 pattern(s) exceeded "
+            "--max-projection-size=500 and were not extended; "
+            "their supergraphs may be missing\n"
+        )
+        assert GBoltWrapper._count_unextended_patterns(stderr) == 12
+
+    def test_complete_result(self):
+        assert GBoltWrapper._count_unextended_patterns("") == 0
+        assert GBoltWrapper._count_unextended_patterns(None) == 0
 
 
 class TestGraphConversion:
@@ -248,3 +273,58 @@ class TestIntegration:
         g = FastgSpan.pattern_to_graph(pattern)
         assert isinstance(g, nx.Graph)
         assert g.number_of_nodes() == df.iloc[0]["num_vert"]
+
+    def test_large_projection_is_mined_completely(self):
+        """Patterns with more than 500,000 embeddings must not be dropped.
+
+        Replicating a database k times and scaling min_support by k must not
+        change the set of frequent patterns. Each K6 holds 6 * 5 * 4 = 120
+        embeddings of the 3-vertex path, so 4,500 copies give 540,000
+        embeddings, above the limit gBolt used to apply silently.
+        """
+        base = [_clique(6)] + _sample_graphs()
+        path = "(0, 1, 1, 1, 1)\n(1, 2, 1, 1, 1)"
+        triangle = path + "\n(2, 0, 1, 1, 1)"
+
+        supports = {}
+        for k in (10, 4500):
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                df = FastgSpan(min_support=k, max_num_vertices=3).run_from_graphs(
+                    base * k
+                )
+            assert df["support"].map(lambda s, k=k: s % k == 0).all()
+            supports[k] = dict(zip(df["description"], df["support"] // k))
+
+        assert supports[4500] == supports[10]
+        assert supports[4500][path] == 2
+        assert supports[4500][triangle] == 1
+
+    def test_projection_limit_warns_instead_of_dropping_silently(self):
+        graphs = [_clique(6)] * 20  # 20 * 120 = 2,400 embeddings of the path
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            full = FastgSpan(min_support=2, max_num_vertices=3).run_from_graphs(graphs)
+
+        with pytest.warns(IncompleteResultWarning, match="1 frequent pattern"):
+            limited = FastgSpan(
+                min_support=2, max_num_vertices=3, max_projection_size=100
+            ).run_from_graphs(graphs)
+
+        # The oversized path is still reported; only its extension (the
+        # triangle) is lost.
+        edge = "(0, 1, 1, 1, 1)"
+        path = edge + "\n(1, 2, 1, 1, 1)"
+        triangle = path + "\n(2, 0, 1, 1, 1)"
+        assert set(full["description"]) == {edge, path, triangle}
+        assert set(limited["description"]) == {edge, path}
+        assert limited["support"].tolist() == [20, 20]
+
+    def test_projection_limit_can_be_escalated_to_error(self):
+        graphs = [_clique(6)] * 20
+        fgs = FastgSpan(min_support=2, max_num_vertices=3, max_projection_size=100)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", IncompleteResultWarning)
+            with pytest.raises(IncompleteResultWarning):
+                fgs.run_from_graphs(graphs)
