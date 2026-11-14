@@ -113,7 +113,7 @@ Low-level wrapper around the gBolt binary. Use this if you need direct access to
 
 By default every pattern is extended, however many embeddings it has, so no pattern is lost for being too frequent.
 
-Versions up to 0.1.3 silently dropped any pattern of two or more edges with more than 500,000 embeddings, together with all of its supergraphs. On large databases this removed even the most frequent patterns. If you mined tens of thousands of graphs with an earlier version, re-run with this one.
+Versions up to 0.1.3 silently dropped any pattern of two or more edges with more than 500,000 embeddings, together with all of its supergraphs. This affects large databases, where it removed even the most frequent patterns (275 of 398 on 249,456 molecules), and also small databases of dense or label-poor graphs (1,120 of 25,462 patterns on 200 graphs of 30 vertices). Results obtained with an earlier version on such data should be recomputed.
 
 Memory grows with the number of threads, because each thread holds the embedding lists of the patterns it is extending. If mining runs out of memory, lower `num_threads` first: the result stays complete and only the run time grows. On a dense benchmark (200 graphs, 30 vertices, average degree 6, `max_num_vertices=7`), 32 threads took 11 s and 7.3 GB, 8 threads 20 s and 2.5 GB, and 1 thread 104 s and 0.6 GB.
 
