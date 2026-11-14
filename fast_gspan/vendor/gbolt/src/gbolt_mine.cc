@@ -1,6 +1,7 @@
 // Modified: 2025-12-07 - Added max_num_vertices support
 // Modified: 2025-12-08 - Added projection size limit to prevent memory explosion
 // Modified: 2026-11-14 - Projection size limit is now opt-in and never silent
+// Modified: 2026-11-14 - Added time limit and resuming from unextended patterns
 #include <gbolt.h>
 #include <graph.h>
 #include <path.h>
@@ -82,6 +83,21 @@ void GBolt::report(const DfsCodes &dfs_codes, const Projection &projection,
   output->push_back(ss.str(), nsupport, output->size(), prev_thread_id, prev_graph_id);
 }
 
+void GBolt::mark_unextended(Output *output, int index, stop_reason_t reason) {
+  output->set_stop_reason(index, reason);
+  if (reason == STOP_TIME_LIMIT) {
+    #ifndef GBOLT_SERIAL
+    #pragma omp atomic
+    #endif
+    ++num_stopped_by_time_;
+  } else {
+    #ifndef GBOLT_SERIAL
+    #pragma omp atomic
+    #endif
+    ++num_stopped_by_size_;
+  }
+}
+
 void GBolt::save(bool output_parent, bool output_pattern, bool output_frequent_nodes) {
   #ifdef GBOLT_SERIAL
   Output *output = gbolt_instances_->output;
@@ -125,7 +141,8 @@ void GBolt::mine_subgraph(
   int prev_nsupport,
   int prev_thread_id,
   int prev_graph_id,
-  bool extend) {
+  bool extend,
+  const resume_node_t *resume) {
   if (!is_min(dfs_codes)) {
     return;
   }
@@ -143,7 +160,19 @@ void GBolt::mine_subgraph(
     return;
   }
   
-  report(dfs_codes, projection, prev_nsupport, prev_thread_id, prev_graph_id);
+  // Modified: 2026-11-14 - When resuming, a pattern the previous run already
+  // extended is only replayed: it is not reported again, and only the
+  // extensions that lead to a pattern to resume are followed.
+  const resume_node_t *replay = (resume != NULL && !resume->unextended) ? resume : NULL;
+  if (replay != NULL) {
+    // Out of time: the patterns below simply stay unextended, because the
+    // caller only updates the patterns that are reported again.
+    if (time_limit_exceeded()) {
+      return;
+    }
+  } else {
+    report(dfs_codes, projection, prev_nsupport, prev_thread_id, prev_graph_id);
+  }
   #ifdef GBOLT_SERIAL
   prev_thread_id = 0;
   #else
@@ -151,18 +180,22 @@ void GBolt::mine_subgraph(
   #endif
   gbolt_instance_t *instance = gbolt_instances_ + prev_thread_id;
   Output *output = instance->output;
-  prev_graph_id = output->size() - 1;
+  // A replayed pattern is not in this output, so its children have no parent id
+  prev_graph_id = replay != NULL ? -1 : output->size() - 1;
 
-  // Modified: 2026-11-14 - Opt-in memory guard. The pattern itself has already
-  // been reported above; only its extension is skipped. All of its descendants
-  // in the DFS code tree are lost, so the skip is counted and surfaced to the
-  // caller instead of being dropped silently.
-  if (!extend) {
-    #ifndef GBOLT_SERIAL
-    #pragma omp atomic
-    #endif
-    ++num_unextended_patterns_;
-    return;
+  // Modified: 2026-11-14 - Opt-in guards. The pattern itself has been reported
+  // above; only its extension is skipped. All of its descendants in the DFS
+  // code tree are missing, so it is flagged in the output and counted instead
+  // of being dropped silently, and a later run can resume from it.
+  if (replay == NULL) {
+    if (!extend) {
+      mark_unextended(output, prev_graph_id, STOP_MAX_PROJECTION_SIZE);
+      return;
+    }
+    if (time_limit_exceeded()) {
+      mark_unextended(output, prev_graph_id, STOP_TIME_LIMIT);
+      return;
+    }
   }
 
   // Find right most path
@@ -178,11 +211,17 @@ void GBolt::mine_subgraph(
   // extensions whose DFS code is not minimal (inside enumerate).
   bool enumerate_forward =
     max_num_vertices_ <= 0 || current_num_vertices < max_num_vertices_;
-  enumerate(graphs, dfs_codes, projection, *right_most_path,
-    projection_map_backward, projection_map_forward, enumerate_forward);
+  if (!enumerate(graphs, dfs_codes, projection, *right_most_path,
+      projection_map_backward, projection_map_forward, enumerate_forward, replay)) {
+    // The time limit passed while enumerating: drop the partial extensions
+    if (replay == NULL) {
+      mark_unextended(output, prev_graph_id, STOP_TIME_LIMIT);
+    }
+    return;
+  }
   // Recursive mining: first backward, last backward, and then last forward to the first forward
   for (auto it = projection_map_backward.begin(); it != projection_map_backward.end(); ++it) {
-    if (!it->second.minimal) {
+    if (!it->second.accepted) {
       continue;
     }
     Projection &projection = it->second.projection;
@@ -191,6 +230,7 @@ void GBolt::mine_subgraph(
       continue;
     }
     bool extend = !exceeds_projection_limit(projection);
+    const resume_node_t *child_resume = replay != NULL ? replay->child(it->first) : NULL;
     int from = (it->first).from;
     int to = (it->first).to;
     int from_label = (it->first).from_label;
@@ -198,19 +238,21 @@ void GBolt::mine_subgraph(
     int to_label = (it->first).to_label;
     #ifdef GBOLT_SERIAL
     dfs_codes.emplace_back(&(it->first));
-    mine_subgraph(graphs, projection, dfs_codes, nsupport, prev_thread_id, prev_graph_id, extend);
+    mine_subgraph(graphs, projection, dfs_codes, nsupport, prev_thread_id, prev_graph_id,
+      extend, child_resume);
     dfs_codes.pop_back();
     #else
-    #pragma omp task shared(graphs, dfs_codes, projection, prev_thread_id, prev_graph_id) firstprivate(nsupport, extend)
+    #pragma omp task shared(graphs, dfs_codes, projection, prev_thread_id, prev_graph_id) firstprivate(nsupport, extend, child_resume)
     {
       DfsCodes dfs_codes_copy(dfs_codes);
       dfs_codes_copy.emplace_back(&(it->first));
-      mine_subgraph(graphs, projection, dfs_codes_copy, nsupport, prev_thread_id, prev_graph_id, extend);
+      mine_subgraph(graphs, projection, dfs_codes_copy, nsupport, prev_thread_id, prev_graph_id,
+        extend, child_resume);
     }
     #endif
   }
   for (auto it = projection_map_forward.rbegin(); it != projection_map_forward.rend(); ++it) {
-    if (!it->second.minimal) {
+    if (!it->second.accepted) {
       continue;
     }
     Projection &projection = it->second.projection;
@@ -219,6 +261,7 @@ void GBolt::mine_subgraph(
       continue;
     }
     bool extend = !exceeds_projection_limit(projection);
+    const resume_node_t *child_resume = replay != NULL ? replay->child(it->first) : NULL;
     int from = (it->first).from;
     int to = (it->first).to;
     int from_label = (it->first).from_label;
@@ -226,14 +269,16 @@ void GBolt::mine_subgraph(
     int to_label = (it->first).to_label;
     #ifdef GBOLT_SERIAL
     dfs_codes.emplace_back(&(it->first));
-    mine_subgraph(graphs, projection, dfs_codes, nsupport, prev_thread_id, prev_graph_id, extend);
+    mine_subgraph(graphs, projection, dfs_codes, nsupport, prev_thread_id, prev_graph_id,
+      extend, child_resume);
     dfs_codes.pop_back();
     #else
-    #pragma omp task shared(graphs, dfs_codes, projection, prev_thread_id, prev_graph_id) firstprivate(nsupport, extend)
+    #pragma omp task shared(graphs, dfs_codes, projection, prev_thread_id, prev_graph_id) firstprivate(nsupport, extend, child_resume)
     {
       DfsCodes dfs_codes_copy(dfs_codes);
       dfs_codes_copy.emplace_back(&(it->first));
-      mine_subgraph(graphs, projection, dfs_codes_copy, nsupport, prev_thread_id, prev_graph_id, extend);
+      mine_subgraph(graphs, projection, dfs_codes_copy, nsupport, prev_thread_id, prev_graph_id,
+        extend, child_resume);
     }
     #endif
   }

@@ -6,12 +6,14 @@ namespace gbolt {
 void Output::push_back(const string &str, int nsupport, int graph_id) {
   buffer_.push_back(str);
   support_.push_back(nsupport);
+  stop_reason_.push_back(STOP_NONE);
   graph_id_.push_back(graph_id);
 }
 
 void Output::push_back(const string &str, int nsupport, int graph_id, int thread_id, int parent_id) {
   buffer_.push_back(str);
   support_.push_back(nsupport);
+  stop_reason_.push_back(STOP_NONE);
   graph_id_.push_back(graph_id);
   thread_id_.push_back(thread_id);
   parent_id_.push_back(parent_id);
@@ -27,6 +29,12 @@ void Output::save(bool output_parent, bool output_pattern) {
         out << "parent : -1" << std::endl;
       else
         out << "parent : " << parent_id_[i] << " thread : " << thread_id_[i] << std::endl;
+    }
+    // Patterns that were not extended are where a later run can resume from
+    if (stop_reason_[i] == STOP_MAX_PROJECTION_SIZE) {
+      out << "u: max_projection_size" << std::endl;
+    } else if (stop_reason_[i] == STOP_TIME_LIMIT) {
+      out << "u: time_limit" << std::endl;
     }
     if (output_pattern == true) {
       out << buffer_[i] << std::endl;

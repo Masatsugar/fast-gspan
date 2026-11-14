@@ -135,6 +135,15 @@ def _brute_force_frequent(
     return [(rep, len(ids)) for rep, ids in classes if len(ids) >= min_support]
 
 
+def _results(df: pd.DataFrame) -> dict:
+    """Map each pattern (its DFS code text) to its support and graph ids."""
+    assert df["description"].is_unique
+    return {
+        row.description: (row.support, tuple(row.graph_ids))
+        for row in df.itertuples()
+    }
+
+
 # ---- unit tests (no gBolt binary required) ----
 
 
@@ -188,20 +197,23 @@ class TestParseOutput:
         assert result[0]["support"] == 8
 
 
-class TestIncompleteResultParsing:
-    """Test detection of gBolt's incomplete-result report on stderr."""
+class TestStopReasonParsing:
+    """Test detection of the patterns gBolt reported but did not extend."""
 
-    def test_detects_unextended_patterns(self):
-        stderr = (
-            "gbolt: incomplete result: 12 pattern(s) exceeded "
-            "--max-projection-size=500 and were not extended; "
-            "their supergraphs may be missing\n"
+    def test_parse_stop_reason(self):
+        text = (
+            "t # 0 * 5\n"
+            "u: time_limit\n"
+            "v 0 1\nv 1 2\ne 0 1 1 3 2\nx: 0 1 2 3 4\n"
+            "t # 1 * 4\n"
+            "v 0 1\nv 1 1\ne 0 1 1 3 1\nx: 0 1 2 3\n"
         )
-        assert GBoltWrapper._count_unextended_patterns(stderr) == 12
+        patterns = GBoltWrapper._parse_gbolt_thread_output(text)
+        assert [p["stop_reason"] for p in patterns] == ["time_limit", None]
 
-    def test_complete_result(self):
-        assert GBoltWrapper._count_unextended_patterns("") == 0
-        assert GBoltWrapper._count_unextended_patterns(None) == 0
+    def test_row_dfs_code(self):
+        row = {"vertices": [(0, 1), (1, 2), (2, 1)], "edges": [(0, 1, 3), (1, 2, 4)]}
+        assert FastgSpan._row_dfs_code(row) == [(0, 1, 1, 3, 2), (1, 2, 2, 4, 1)]
 
 
 class TestGraphConversion:
@@ -386,8 +398,11 @@ class TestIntegration:
         path = edge + "\n(1, 2, 1, 1, 1)"
         triangle = path + "\n(2, 0, 1, 1, 1)"
         assert set(full["description"]) == {edge, path, triangle}
+        assert full["stop_reason"].isna().all()
         assert set(limited["description"]) == {edge, path}
         assert limited["support"].tolist() == [20, 20]
+        stop_reasons = dict(zip(limited["description"], limited["stop_reason"].fillna("")))
+        assert stop_reasons == {edge: "", path: "max_projection_size"}
 
     def test_projection_limit_can_be_escalated_to_error(self):
         graphs = [_clique(6)] * 20
@@ -430,3 +445,119 @@ class TestIntegration:
             else:
                 pytest.fail(f"not frequent, or mined twice: {row.description!r}")
         assert not unmatched, f"{len(unmatched)} frequent patterns were not mined"
+
+    def test_time_limit_returns_partial_result_and_resume_completes_it(self):
+        graphs = _random_graphs(seed=0)
+        full = FastgSpan(min_support=3).run_from_graphs(graphs)
+
+        # A budget this small is used up before mining starts: every
+        # single-edge pattern is reported and none is extended.
+        with pytest.warns(IncompleteResultWarning, match="by time_limit"):
+            partial = FastgSpan(min_support=3, time_limit=1e-9).run_from_graphs(graphs)
+        assert (partial["stop_reason"] == "time_limit").all()
+        assert _results(partial) == _results(full[full["num_vert"] == 2])
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            resumed = FastgSpan(min_support=3).resume_from_graphs(graphs, partial)
+        assert resumed["stop_reason"].isna().all()
+        assert _results(resumed) == _results(full)
+        # The input is left untouched
+        assert (partial["stop_reason"] == "time_limit").all()
+
+    @pytest.mark.parametrize(
+        "graph_options",
+        [
+            {"seed": 0},
+            {"seed": 1},
+            {"seed": 2, "n_vertex_labels": 1, "n_edge_labels": 1},
+        ],
+    )
+    def test_resume_in_several_steps_matches_single_run(self, graph_options):
+        graphs = _random_graphs(**graph_options)
+        full = FastgSpan(min_support=3).run_from_graphs(graphs)
+
+        result = None
+        unextended = []
+        for limit in (4, 12, 40, 0):  # 0 = no limit
+            fgs = FastgSpan(min_support=3, max_projection_size=limit)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", IncompleteResultWarning)
+                if result is None:
+                    result = fgs.run_from_graphs(graphs)
+                else:
+                    result = fgs.resume_from_graphs(graphs, result)
+            unextended.append(int(result["stop_reason"].notna().sum()))
+
+        assert unextended[0] > 0  # the first step really was partial
+        assert unextended[-1] == 0
+        assert _results(result) == _results(full)
+
+    def test_resume_without_progress_says_so(self):
+        graphs = [_clique(6)] * 20
+        fgs = FastgSpan(min_support=2, max_num_vertices=3, max_projection_size=100)
+        with pytest.warns(IncompleteResultWarning):
+            partial = fgs.run_from_graphs(graphs)
+
+        # Same limit again: the oversized pattern still cannot be extended
+        with pytest.warns(IncompleteResultWarning, match="extended nothing"):
+            again = fgs.resume_from_graphs(graphs, partial)
+        assert _results(again) == _results(partial)
+        pd.testing.assert_frame_equal(again, partial)
+
+    def test_resume_cut_short_keeps_what_is_left_to_do(self):
+        """Running out of time before reaching the unextended patterns loses nothing."""
+        graphs = _random_graphs(seed=0)
+        full = FastgSpan(min_support=3).run_from_graphs(graphs)
+        with pytest.warns(IncompleteResultWarning):
+            partial = FastgSpan(min_support=3, max_projection_size=4).run_from_graphs(
+                graphs
+            )
+        # The unextended patterns lie below patterns that were already extended
+        assert (partial.loc[partial["stop_reason"].notna(), "num_vert"] > 2).all()
+
+        with pytest.warns(IncompleteResultWarning, match="extended nothing"):
+            again = FastgSpan(min_support=3, time_limit=1e-9).resume_from_graphs(
+                graphs, partial
+            )
+        pd.testing.assert_frame_equal(again, partial)
+
+        resumed = FastgSpan(min_support=3).resume_from_graphs(graphs, again)
+        assert _results(resumed) == _results(full)
+
+    def test_resume_keeps_small_unextended_patterns(self):
+        """Rows below min_num_vertices are kept for as long as they are unextended."""
+        graphs = _random_graphs(seed=1)
+        full = FastgSpan(min_support=3, min_num_vertices=3).run_from_graphs(graphs)
+        assert (full["num_vert"] >= 3).all()
+
+        with pytest.warns(IncompleteResultWarning):
+            partial = FastgSpan(
+                min_support=3, min_num_vertices=3, time_limit=1e-9
+            ).run_from_graphs(graphs)
+        assert len(partial) > 0
+        assert (partial["num_vert"] == 2).all()
+
+        resumed = FastgSpan(min_support=3, min_num_vertices=3).resume_from_graphs(
+            graphs, partial
+        )
+        assert _results(resumed) == _results(full)
+
+    def test_resume_rejects_other_graphs(self):
+        with pytest.warns(IncompleteResultWarning):
+            partial = FastgSpan(min_support=3, time_limit=1e-9).run_from_graphs(
+                _random_graphs(seed=0)
+            )
+        with pytest.raises(ValueError, match="does not match"):
+            FastgSpan(min_support=3).resume_from_graphs(
+                _random_graphs(seed=1), partial
+            )
+
+    def test_resume_of_complete_result_changes_nothing(self):
+        graphs = _duplicate_graphs(10)
+        fgs = FastgSpan(min_support=2, max_num_vertices=5)
+        full = fgs.run_from_graphs(graphs)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            again = fgs.resume_from_graphs(graphs, full)
+        pd.testing.assert_frame_equal(again, full)

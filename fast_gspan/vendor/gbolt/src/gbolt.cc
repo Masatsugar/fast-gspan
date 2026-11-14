@@ -2,6 +2,7 @@
 #include <gbolt.h>
 #include <database.h>
 #include <common.h>
+#include <chrono>
 #include <cxxopts.hpp>
 
 // Initialize instance
@@ -9,6 +10,8 @@ using gbolt::Database;
 Database *Database::instance_ = new Database();
 
 int main(int argc, char *argv[]) {
+  // The time limit is measured from here, so it includes reading the input
+  std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
   cxxopts::Options options("gBolt", "very fast implementation for gSpan algorithm in data mining");
   options.add_options()
     ("i,input", "Input path of graph data", cxxopts::value<std::string>())
@@ -20,6 +23,14 @@ int main(int argc, char *argv[]) {
      "(0 = unlimited). Bounds memory, but the result is incomplete whenever "
      "the limit is hit",
      cxxopts::value<uint64_t>()->default_value("0"))
+    ("time-limit",
+     "Stop extending patterns after this many seconds (0 = unlimited). "
+     "Patterns found until then are saved; the result is incomplete",
+     cxxopts::value<double>()->default_value("0"))
+    ("resume",
+     "Continue a previous run: file with the DFS codes of the patterns it "
+     "reported but did not extend",
+     cxxopts::value<std::string>()->default_value(""))
     ("m,mark", "Graph data separator", cxxopts::value<std::string>()->default_value(" "))
     ("p,parents", "Output subgraph parent ids",
      cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
@@ -46,6 +57,8 @@ int main(int argc, char *argv[]) {
   double support = result["s"].count() ? result["s"].as<double>() : result["support"].as<double>();
   int max_vertices = result["x"].count() ? result["x"].as<int>() : result["max-vertices"].as<int>();  // Modified: 2025-12-07
   uint64_t max_projection_size = result["max-projection-size"].as<uint64_t>();  // Modified: 2026-11-14
+  double time_limit = result["time-limit"].as<double>();  // Modified: 2026-11-14
+  std::string resume = result["resume"].as<std::string>();  // Modified: 2026-11-14
   std::string mark = result["m"].count() ? result["m"].as<std::string>() : result["mark"].as<std::string>();
   bool parents = result["p"].count() ? result["p"].as<bool>() : result["parents"].as<bool>();
   bool dfs = result["d"].count() ? result["d"].as<bool>() : result["dfs"].as<bool>();
@@ -68,19 +81,29 @@ int main(int argc, char *argv[]) {
   #endif
   // Construct algorithm - Modified: 2025-12-07 - Added max_vertices parameter
   gbolt::GBolt gbolt(output, support, max_vertices, max_projection_size);
+  gbolt.set_time_limit(time_limit, start_time);
+  if (resume.size() != 0) {
+    gbolt.load_resume(resume);
+  }
   gbolt.execute();
   #ifdef GBOLT_PERFORMANCE
   CPU_TIMER_END(elapsed, time_start, time_end);
   LOG_INFO("gbolt execute time: %f", elapsed);
   #endif
-  // Modified: 2026-11-14 - Never truncate silently. The Python wrapper parses
-  // this line, so keep the "incomplete result: <N> pattern(s)" part stable.
-  if (gbolt.num_unextended_patterns() > 0) {
+  // Modified: 2026-11-14 - Never truncate silently. The unextended patterns
+  // are also flagged one by one in the output ("u: <reason>").
+  long stopped_by_size = gbolt.num_stopped_by_size();
+  long stopped_by_time = gbolt.num_stopped_by_time();
+  if (stopped_by_size + stopped_by_time > 0) {
     fprintf(stderr,
-      "gbolt: incomplete result: %ld pattern(s) exceeded --max-projection-size=%llu "
-      "and were not extended; their supergraphs may be missing\n",
-      gbolt.num_unextended_patterns(),
-      static_cast<unsigned long long>(max_projection_size));
+      "gbolt: incomplete result: %ld pattern(s) were not extended "
+      "(%ld over --max-projection-size, %ld after --time-limit); "
+      "their supergraphs may be missing\n",
+      stopped_by_size + stopped_by_time, stopped_by_size, stopped_by_time);
+  }
+  // The Python wrapper looks for this line, so keep it stable
+  if (gbolt.time_limit_reached()) {
+    fprintf(stderr, "gbolt: time limit reached\n");
   }
   // Save results
   if (output.size() != 0) {

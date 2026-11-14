@@ -71,6 +71,13 @@ using std::set;
 using std::unordered_set;
 using std::vector;
 
+// Why a reported pattern was not extended (written to the output as "u: ...")
+enum stop_reason_t {
+  STOP_NONE = 0,
+  STOP_MAX_PROJECTION_SIZE,
+  STOP_TIME_LIMIT,
+};
+
 }  // namespace gbolt
 
 #endif  // INCLUDE_COMMON_H_

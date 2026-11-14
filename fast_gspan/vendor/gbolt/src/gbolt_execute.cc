@@ -2,6 +2,8 @@
 #include <database.h>
 #include <common.h>
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 #ifdef __GLIBC__
 #include <malloc.h>
 #endif
@@ -84,8 +86,56 @@ void GBolt::init_instances(const vector<Graph> &graphs) {
   }
 }
 
+// Modified: 2026-11-14 - Read the DFS codes of the patterns to resume from.
+// Format: a "t ..." line starts a pattern, followed by one line per edge:
+// e <from> <to> <from_label> <edge_label> <to_label>
+void GBolt::load_resume(const string &resume_file) {
+  std::ifstream fin(resume_file.c_str());
+  if (!fin.is_open()) {
+    LOG_ERROR("Open file error! %s", resume_file.c_str());
+  }
+  resume_root_.reset(new resume_node_t());
+  resume_node_t *root = resume_root_.get();
+  // Last node of the DFS code being read
+  resume_node_t *node = NULL;
+  string line;
+
+  while (std::getline(fin, line)) {
+    std::istringstream iss(line);
+    string type;
+    if (!(iss >> type)) {
+      continue;
+    }
+    if (type == "t") {
+      if (node != NULL && node != root) {
+        node->unextended = true;
+      }
+      node = root;
+    } else if (type == "e" && node != NULL) {
+      dfs_code_t dfs_code;
+      if (!(iss >> dfs_code.from >> dfs_code.to >> dfs_code.from_label
+          >> dfs_code.edge_label >> dfs_code.to_label)) {
+        LOG_ERROR("Reading resume file error!");
+      }
+      std::unique_ptr<resume_node_t> &child = node->children[dfs_code];
+      if (!child) {
+        child.reset(new resume_node_t());
+      }
+      node = child.get();
+    } else {
+      LOG_ERROR("Reading resume file error!");
+    }
+  }
+  if (node != NULL && node != root) {
+    node->unextended = true;
+  }
+}
+
 void GBolt::project(const vector<Graph> &graphs) {
   ProjectionMap projection_map;
+  // When resuming, only the single-edge patterns that lead to a pattern to
+  // resume are needed
+  const resume_node_t *resume_root = resume_root_.get();
 
   // Construct the first edge
   for (auto i = 0; i < graphs.size(); ++i) {
@@ -101,6 +151,9 @@ void GBolt::project(const vector<Graph> &graphs) {
           const vertex_t *vertex_to = graph.get_p_vertex(edges[k]->to);
           // Push dfs code according to the same edge label
           dfs_code_t dfs_code(0, 1, vertex_from->label, edges[k]->label, vertex_to->label);
+          if (resume_root != NULL && resume_root->child(dfs_code) == NULL) {
+            continue;
+          }
           // Push all the graphs
           projection_map[dfs_code].emplace_back(graphs[i].get_id(), edges[k], (const prev_dfs_t *)NULL);
         }
@@ -130,15 +183,19 @@ void GBolt::project(const vector<Graph> &graphs) {
       int from_label = (it->first).from_label;
       int edge_label = (it->first).edge_label;
       int to_label = (it->first).to_label;
+      const resume_node_t *child_resume =
+        resume_root != NULL ? resume_root->child(it->first) : NULL;
       #ifdef GBOLT_SERIAL
       dfs_codes.emplace_back(&(it->first));
-      mine_subgraph(graphs, projection, dfs_codes, nsupport, prev_thread_id, prev_graph_id);
+      mine_subgraph(graphs, projection, dfs_codes, nsupport, prev_thread_id, prev_graph_id,
+        true, child_resume);
       dfs_codes.pop_back();
       #else
-      #pragma omp task shared(graphs, projection, prev_thread_id, prev_graph_id) firstprivate(dfs_codes, nsupport)
+      #pragma omp task shared(graphs, projection, prev_thread_id, prev_graph_id) firstprivate(dfs_codes, nsupport, child_resume)
       {
         dfs_codes.emplace_back(&(it->first));
-        mine_subgraph(graphs, projection, dfs_codes, nsupport, prev_thread_id, prev_graph_id);
+        mine_subgraph(graphs, projection, dfs_codes, nsupport, prev_thread_id, prev_graph_id,
+          true, child_resume);
       }
       #endif
     }

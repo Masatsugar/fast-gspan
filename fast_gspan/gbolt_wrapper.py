@@ -5,15 +5,15 @@ Standalone version with no dependency on neural_graph_mining.
 
 import glob
 import os
-import re
 import subprocess
 import sys
 import tempfile
 import threading
 import time
 import warnings
+from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import networkx as nx
 import pandas as pd
@@ -22,14 +22,41 @@ import pandas as pd
 class IncompleteResultWarning(RuntimeWarning):
     """gBolt returned only part of the frequent patterns.
 
-    Issued when ``max_projection_size`` stopped at least one pattern from being
-    extended. Turn it into an error with
+    Issued when ``max_projection_size`` or ``time_limit`` stopped at least one
+    pattern from being extended. Turn it into an error with
     ``warnings.simplefilter("error", IncompleteResultWarning)``.
     """
 
 
-# Line printed to stderr by the bundled gBolt when max_projection_size was hit.
-_INCOMPLETE_RE = re.compile(r"incomplete result: (\d+) pattern")
+# Line printed to stderr by the bundled gBolt once time_limit has passed.
+_TIME_LIMIT_REACHED = "gbolt: time limit reached"
+
+# A DFS code: one (from, to, from_label, edge_label, to_label) tuple per edge.
+DfsCode = List[Tuple[int, int, int, int, int]]
+
+
+def _warn_incomplete(
+    stop_reasons: List[str], stacklevel: int, progressed: bool = True
+) -> None:
+    """Issue an IncompleteResultWarning for the given unextended patterns.
+
+    *stacklevel* is relative to the caller of this function.
+    """
+    counts = Counter(stop_reasons)
+    detail = ", ".join(f"{n} by {reason}" for reason, n in sorted(counts.items()))
+    message = (
+        f"gBolt did not extend {len(stop_reasons)} frequent pattern(s) ({detail}); "
+        f"their supergraphs may be missing from the result. Continue with "
+        f"FastgSpan.resume_from_graphs(). Patterns stopped by max_projection_size "
+        f"need a larger max_projection_size to be extended."
+    )
+    if not progressed:
+        message += (
+            " This run extended nothing: raise time_limit (reading the input and "
+            "returning to the unextended patterns takes time too) or "
+            "max_projection_size."
+        )
+    warnings.warn(message, IncompleteResultWarning, stacklevel=stacklevel + 1)
 
 
 class ProgressMonitor:
@@ -125,6 +152,13 @@ class GBoltWrapper:
     its supergraphs may be missing and an :class:`IncompleteResultWarning` is
     issued. The default ``0`` means unlimited: no pattern is lost for having
     too many embeddings.
+
+    ``time_limit`` is a budget in seconds for one mining call. Once it is used
+    up, the patterns reached are still reported but not extended, with the same
+    warning. ``timeout``, in contrast, kills gBolt and raises an error.
+
+    Every returned pattern has a ``stop_reason``: ``None`` when it was
+    extended, otherwise ``"max_projection_size"`` or ``"time_limit"``.
     """
 
     def __init__(
@@ -137,6 +171,7 @@ class GBoltWrapper:
         show_progress: bool = False,
         verbose: bool = False,
         max_projection_size: int = 0,
+        time_limit: Optional[float] = None,
     ):
         self.min_support = min_support
         self.max_vertices = max_vertices
@@ -145,6 +180,7 @@ class GBoltWrapper:
         self.show_progress = show_progress
         self.verbose = verbose
         self.max_projection_size = max_projection_size
+        self.time_limit = time_limit
         self._gbolt_path = self._find_gbolt_executable(gbolt_path)
 
         if not self._gbolt_path:
@@ -273,6 +309,7 @@ class GBoltWrapper:
                         "vertices": [],
                         "edges": [],
                         "graph_data": "",
+                        "stop_reason": None,
                     }
                     graph_lines = []
                 else:
@@ -305,6 +342,10 @@ class GBoltWrapper:
                         (int(parts[1]), int(parts[2]), int(parts[3]))
                     )
                     graph_lines.append(line)
+
+            # Reported but not extended: u: <reason>
+            elif line.startswith("u: ") and current_pattern is not None:
+                current_pattern["stop_reason"] = line[3:].strip()
 
             elif line.startswith("x: ") and current_pattern is not None:
                 graph_ids_str = line[3:].strip()
@@ -347,24 +388,54 @@ class GBoltWrapper:
         return unique
 
     @staticmethod
-    def _count_unextended_patterns(stderr: Optional[str]) -> int:
-        """Return how many patterns gBolt reported as not extended (0 = complete)."""
-        match = _INCOMPLETE_RE.search(stderr or "")
-        return int(match.group(1)) if match else 0
+    def _write_resume_file(dfs_codes: List[DfsCode], filename: str) -> None:
+        with open(filename, "w") as f:
+            for i, dfs_code in enumerate(dfs_codes):
+                f.write(f"t # {i}\n")
+                for frm, to, from_label, edge_label, to_label in dfs_code:
+                    f.write(f"e {frm} {to} {from_label} {edge_label} {to_label}\n")
 
     # ----- main entry point -----
 
     def mine_frequent_subgraphs(
-        self, graphs: List[nx.Graph]
+        self,
+        graphs: List[nx.Graph],
+        resume_from: Optional[List[DfsCode]] = None,
     ) -> List[Dict[str, Any]]:
         """Mine frequent subgraphs from a list of NetworkX graphs.
 
         Returns a list of pattern dicts with keys:
-        pattern_id, support, vertices, edges, dfs_codes (optional),
+        pattern_id, support, vertices, edges, stop_reason, dfs_codes (optional),
         graph_occurrences (optional), graph_data.
+
+        With *resume_from*, the DFS codes of patterns that a previous run on
+        the same graphs reported but did not extend, only those patterns and
+        their supergraphs are mined. Each resumed pattern that is reached is
+        reported again, with its new ``stop_reason``.
+        """
+        patterns, _ = self._run(graphs, resume_from)
+        if patterns is None:
+            return []
+
+        stop_reasons = [p["stop_reason"] for p in patterns if p.get("stop_reason")]
+        if stop_reasons:
+            _warn_incomplete(stop_reasons, stacklevel=2)
+        return patterns
+
+    def _run(
+        self,
+        graphs: List[nx.Graph],
+        resume_from: Optional[List[DfsCode]] = None,
+    ) -> Tuple[Optional[List[Dict[str, Any]]], bool]:
+        """Run gBolt once, without issuing IncompleteResultWarning.
+
+        Returns the raw patterns (None if gBolt failed) and whether
+        ``time_limit`` passed during the run.
         """
         if not graphs:
-            return []
+            return [], False
+
+        started = time.monotonic()
 
         with tempfile.TemporaryDirectory() as temp_dir:
             input_file = os.path.join(temp_dir, "input.txt")
@@ -391,6 +462,11 @@ class GBoltWrapper:
             if self.max_projection_size > 0:
                 cmd.extend(["--max-projection-size", str(self.max_projection_size)])
 
+            if resume_from is not None:
+                resume_file = os.path.join(temp_dir, "resume.txt")
+                self._write_resume_file(resume_from, resume_file)
+                cmd.extend(["--resume", resume_file])
+
             env = _vendor_lib_env()
             if self.num_threads > 0:
                 env["OMP_NUM_THREADS"] = str(self.num_threads)
@@ -398,6 +474,13 @@ class GBoltWrapper:
             progress_monitor = None
             if self.show_progress:
                 progress_monitor = ProgressMonitor(output_file)
+
+            if self.time_limit is not None and self.time_limit > 0:
+                # The budget covers the whole call, so take off the time already
+                # spent writing the input. A used-up budget still has to be
+                # positive: gBolt reads 0 as "no limit".
+                remaining = self.time_limit - (time.monotonic() - started)
+                cmd.extend(["--time-limit", f"{max(remaining, 1e-9):.9f}"])
 
             try:
                 if self.verbose:
@@ -421,9 +504,9 @@ class GBoltWrapper:
                         f"gBolt exited with code {result.returncode}. "
                         f"stderr: {result.stderr.strip()[:500]}",
                         RuntimeWarning,
-                        stacklevel=2,
+                        stacklevel=3,
                     )
-                    return []
+                    return None, False
 
                 output_patterns = self._collect_gbolt_thread_outputs(
                     temp_dir, output_file
@@ -444,20 +527,7 @@ class GBoltWrapper:
                     progress_monitor.stop(0)
                 raise RuntimeError(f"Error running gBolt: {e}")
 
-            # Warn outside the try block so that a caller who escalates this
-            # warning to an error receives it unwrapped.
-            unextended = self._count_unextended_patterns(result.stderr)
-            if unextended:
-                warnings.warn(
-                    f"gBolt did not extend {unextended} frequent pattern(s) with more "
-                    f"than max_projection_size={self.max_projection_size} embeddings; "
-                    f"their supergraphs may be missing from the result. Raise "
-                    f"max_projection_size, or use 0 (unlimited) to extend every pattern.",
-                    IncompleteResultWarning,
-                    stacklevel=2,
-                )
-
-            return output_patterns
+            return output_patterns, _TIME_LIMIT_REACHED in result.stderr
 
 
 _RESULT_COLUMNS = [
@@ -468,6 +538,7 @@ _RESULT_COLUMNS = [
     "vertices",
     "edges",
     "graph_ids",
+    "stop_reason",
 ]
 
 
@@ -478,8 +549,10 @@ class FastgSpan:
     available an informative error is raised (no silent fallback).
 
     By default no pattern is lost for having too many embeddings. Setting
-    ``max_projection_size`` trades that for bounded memory; see
-    :class:`GBoltWrapper`.
+    ``max_projection_size`` trades that for bounded memory and ``time_limit``
+    for bounded time; see :class:`GBoltWrapper`. The patterns that were not
+    extended have a ``stop_reason`` in the result, and
+    :meth:`resume_from_graphs` continues from them.
     """
 
     def __init__(
@@ -493,6 +566,7 @@ class FastgSpan:
         show_progress: bool = False,
         verbose: bool = False,
         max_projection_size: int = 0,
+        time_limit: Optional[float] = None,
     ):
         self.min_support = min_support
         self.min_num_vertices = min_num_vertices
@@ -502,6 +576,7 @@ class FastgSpan:
         self.show_progress = show_progress
         self.verbose = verbose
         self.max_projection_size = max_projection_size
+        self.time_limit = time_limit
 
         self._gbolt = GBoltWrapper(
             gbolt_path=gbolt_path,
@@ -512,6 +587,7 @@ class FastgSpan:
             show_progress=show_progress,
             verbose=verbose,
             max_projection_size=max_projection_size,
+            time_limit=time_limit,
         )
 
     # ----- pattern utilities -----
@@ -546,41 +622,152 @@ class FastgSpan:
 
     # ----- mining -----
 
+    def _pattern_to_row(self, pattern: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Convert a raw pattern into a result row, or None if it is filtered out.
+
+        ``min_num_vertices`` is not applied here, see :meth:`_is_result_row`.
+        """
+        num_vertices = len(pattern["vertices"])
+        if pattern["support"] < self.min_support:
+            return None
+        if self.max_num_vertices > 0 and num_vertices > self.max_num_vertices:
+            return None
+
+        return {
+            "support": pattern["support"],
+            "description": self._pattern_to_description(pattern),
+            "num_vert": num_vertices,
+            "pattern_id": pattern["pattern_id"],
+            "vertices": pattern["vertices"],
+            "edges": pattern["edges"],
+            "graph_ids": pattern.get("graph_occurrences"),
+            "stop_reason": pattern.get("stop_reason"),
+        }
+
+    def _is_result_row(self, row: Dict[str, Any]) -> bool:
+        """Apply ``min_num_vertices``.
+
+        An unextended pattern is kept whatever its size: it is where
+        resume_from_graphs() continues from.
+        """
+        return row["num_vert"] >= self.min_num_vertices or bool(row["stop_reason"])
+
+    def _patterns_to_rows(
+        self, patterns: Optional[List[Dict[str, Any]]]
+    ) -> List[Dict[str, Any]]:
+        rows = (self._pattern_to_row(pattern) for pattern in patterns or [])
+        return [row for row in rows if row is not None]
+
+    @staticmethod
+    def _row_dfs_code(row: Dict[str, Any]) -> DfsCode:
+        """Rebuild the DFS code of a result row from its vertices and edges."""
+        labels = {int(vid): int(label) for vid, label in row["vertices"]}
+        return [
+            (int(frm), int(to), labels[int(frm)], int(label), labels[int(to)])
+            for frm, to, label in row["edges"]
+        ]
+
     def run_from_graphs(self, graphs: List[nx.Graph]) -> pd.DataFrame:
         """Mine frequent subgraphs from *graphs* and return a DataFrame."""
         if not graphs:
             return pd.DataFrame(columns=_RESULT_COLUMNS)
 
-        patterns = self._gbolt.mine_frequent_subgraphs(graphs)
+        patterns, _ = self._gbolt._run(graphs)
+        rows = [row for row in self._patterns_to_rows(patterns) if self._is_result_row(row)]
 
-        data = []
-        for pattern in patterns:
-            num_vertices = len(pattern["vertices"])
-            if pattern["support"] < self.min_support:
-                continue
-            if num_vertices < self.min_num_vertices:
-                continue
-            if self.max_num_vertices > 0 and num_vertices > self.max_num_vertices:
-                continue
+        stop_reasons = [row["stop_reason"] for row in rows if row["stop_reason"]]
+        if stop_reasons:
+            _warn_incomplete(stop_reasons, stacklevel=2)
 
-            data.append(
-                {
-                    "support": pattern["support"],
-                    "description": self._pattern_to_description(pattern),
-                    "num_vert": num_vertices,
-                    "pattern_id": pattern["pattern_id"],
-                    "vertices": pattern["vertices"],
-                    "edges": pattern["edges"],
-                    "graph_ids": pattern.get("graph_occurrences"),
-                }
-            )
-
-        return pd.DataFrame(data, columns=_RESULT_COLUMNS)
+        return pd.DataFrame(rows, columns=_RESULT_COLUMNS)
 
     def run_from_file(self, filepath: str) -> pd.DataFrame:
         """Read graphs from a gSpan-format file and mine frequent subgraphs."""
         graphs = _read_gspan_file(filepath)
         return self.run_from_graphs(graphs)
+
+    def resume_from_graphs(
+        self, graphs: List[nx.Graph], previous: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Continue mining from an incomplete result and return the merged result.
+
+        *previous* is a DataFrame returned by :meth:`run_from_graphs` or by an
+        earlier resume, for the same *graphs* (in the same order), the same
+        ``min_support`` and the same ``max_num_vertices``. Mining continues
+        from its rows whose ``stop_reason`` is set. The
+        embeddings of those patterns are not stored anywhere: gBolt rebuilds
+        them from their DFS codes, so each resume first spends some time
+        getting back to where the previous run stopped.
+
+        The returned DataFrame holds the rows of *previous* with an updated
+        ``stop_reason``, plus the newly found patterns. It is complete once no
+        ``stop_reason`` is left. *previous* is not modified.
+        """
+        if "stop_reason" not in previous.columns:
+            raise ValueError(
+                "previous has no 'stop_reason' column; pass a result of "
+                "run_from_graphs() or resume_from_graphs()"
+            )
+
+        records = previous.to_dict("records")
+        for record in records:
+            if pd.isna(record["stop_reason"]):
+                record["stop_reason"] = None
+        pending = {r["description"]: r for r in records if r["stop_reason"]}
+        if not pending or not graphs:
+            return previous.copy()
+
+        dfs_codes = [self._row_dfs_code(record) for record in pending.values()]
+        patterns, time_limit_reached = self._gbolt._run(graphs, resume_from=dfs_codes)
+        if patterns is None:
+            # gBolt failed (already warned about): nothing was resumed
+            return previous.copy()
+
+        new_rows: Dict[str, Dict[str, Any]] = {}
+        for row in self._patterns_to_rows(patterns):
+            new_rows.setdefault(row["description"], row)
+
+        progressed = False
+        not_reached = 0
+        for description, record in pending.items():
+            new = new_rows.pop(description, None)
+            if new is None:
+                # Not reported again: still unextended, for the same reason
+                not_reached += 1
+            elif new["support"] != record["support"]:
+                raise ValueError(
+                    f"previous does not match these graphs: support of pattern "
+                    f"{description!r} is {new['support']}, was {record['support']}"
+                )
+            else:
+                progressed = progressed or new["stop_reason"] is None
+                record["stop_reason"] = new["stop_reason"]
+
+        # Without a time limit every pattern to resume must have been found again
+        if not_reached and not time_limit_reached:
+            raise ValueError(
+                f"previous does not match these graphs or settings (min_support, "
+                f"max_num_vertices): {not_reached} of its unextended patterns were "
+                f"not found"
+            )
+
+        known = {record["description"] for record in records}
+        added = [row for desc, row in new_rows.items() if desc not in known]
+        progressed = progressed or bool(added)
+
+        # Rows below min_num_vertices were only kept while they were unextended
+        merged = [row for row in records + added if self._is_result_row(row)]
+
+        stop_reasons = [r["stop_reason"] for r in merged if r["stop_reason"]]
+        if stop_reasons:
+            _warn_incomplete(stop_reasons, stacklevel=2, progressed=progressed)
+
+        return pd.DataFrame(merged, columns=_RESULT_COLUMNS)
+
+    def resume_from_file(self, filepath: str, previous: pd.DataFrame) -> pd.DataFrame:
+        """Like :meth:`resume_from_graphs`, for graphs in a gSpan-format file."""
+        graphs = _read_gspan_file(filepath)
+        return self.resume_from_graphs(graphs, previous)
 
 
 # ----- utility: read gSpan text format -----

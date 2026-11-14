@@ -120,6 +120,25 @@ struct dfs_code_forward_compare_t {
   }
 };
 
+// Total order over complete DFS codes, used to look up the codes to resume from
+struct dfs_code_full_compare_t {
+  bool operator() (const dfs_code_t &first, const dfs_code_t &second) const {
+    if (first.from != second.from) {
+      return first.from < second.from;
+    }
+    if (first.to != second.to) {
+      return first.to < second.to;
+    }
+    if (first.from_label != second.from_label) {
+      return first.from_label < second.from_label;
+    }
+    if (first.edge_label != second.edge_label) {
+      return first.edge_label < second.edge_label;
+    }
+    return first.to_label < second.to_label;
+  }
+};
+
 struct vertex_t {
   vertex_t() : id(0), label(0), edges(0) {}
   vertex_t(int id, int label) : id(id), label(label), edges(0) {}

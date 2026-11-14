@@ -21,9 +21,15 @@ class Output {
 
   void save(bool output_parent = false, bool output_pattern = false);
 
+  // Record that the pattern at `index` was reported but not extended
+  void set_stop_reason(int index, stop_reason_t reason) {
+    stop_reason_[index] = reason;
+  }
+
  private:
   vector<string> buffer_;
   vector<int> support_;
+  vector<stop_reason_t> stop_reason_;
   vector<int> thread_id_;
   vector<int> parent_id_;
   vector<int> graph_id_;

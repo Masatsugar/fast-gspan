@@ -7,11 +7,30 @@
 #include <history.h>
 #include <path.h>
 #include <output.h>
+#include <atomic>
+#include <chrono>
 #include <map>
+#include <memory>
 #include <vector>
 #include <string>
 
 namespace gbolt {
+
+// Tree of the DFS codes to resume from (see GBolt::load_resume)
+struct resume_node_t {
+  resume_node_t() : unextended(false) {}
+
+  const resume_node_t *child(const dfs_code_t &dfs_code) const {
+    auto it = children.find(dfs_code);
+    return it == children.end() ? NULL : it->second.get();
+  }
+
+  // True for a pattern the previous run reported but did not extend. The
+  // other nodes were already extended: they are only walked through again to
+  // rebuild the projections of the patterns below them.
+  bool unextended;
+  map<dfs_code_t, std::unique_ptr<resume_node_t>, dfs_code_full_compare_t> children;
+};
 
 struct gbolt_instance_t {
   Graph *min_graph = NULL;
@@ -44,16 +63,37 @@ class GBolt {
   GBolt(const string &output_file, double support, int max_vertices = 0,
     size_t max_projection_size = 0) :
     output_file_(output_file), support_(support), max_num_vertices_(max_vertices),
-    max_projection_size_(max_projection_size), num_unextended_patterns_(0),
+    max_projection_size_(max_projection_size), num_stopped_by_size_(0),
+    num_stopped_by_time_(0), time_limit_(0), time_limit_reached_(false),
     output_frequent_nodes_(0), gbolt_instances_(0) {}
 
   void execute();
 
-  // Number of frequent patterns that were reported but not extended because
-  // their projection exceeded max_projection_size. A non-zero value means the
-  // mining result is incomplete.
-  long num_unextended_patterns() const {
-    return num_unextended_patterns_;
+  // Modified: 2026-11-14 - Stop extending patterns once `seconds` have passed
+  // since `start` (0 = unlimited). Patterns reached after that are reported
+  // but not extended.
+  void set_time_limit(double seconds, std::chrono::steady_clock::time_point start) {
+    time_limit_ = seconds;
+    start_time_ = start;
+  }
+
+  // Modified: 2026-11-14 - Continue a previous run: mine only below the
+  // patterns that run reported but did not extend (the "u: ..." entries of its
+  // output), given as DFS codes in `resume_file`.
+  void load_resume(const string &resume_file);
+
+  // Numbers of frequent patterns that were reported but not extended. A
+  // non-zero value means the mining result is incomplete.
+  long num_stopped_by_size() const {
+    return num_stopped_by_size_;
+  }
+
+  long num_stopped_by_time() const {
+    return num_stopped_by_time_;
+  }
+
+  bool time_limit_reached() const {
+    return time_limit_reached_;
   }
 
   void save(bool output_parent = false, bool output_pattern = false, bool output_frequent_nodes = false);
@@ -68,13 +108,13 @@ class GBolt {
   }
 
  private:
-  // Embeddings of one candidate extension. `minimal` is decided when the
-  // extension is first seen: embeddings of a non-minimal (duplicate) DFS code
-  // are never stored.
+  // Embeddings of one candidate extension. `accepted` is decided when the
+  // extension is first seen: embeddings of a non-minimal (duplicate) DFS code,
+  // or of one that is not on the way to a pattern to resume, are never stored.
   struct candidate_t {
-    candidate_t() : minimal(false) {}
+    candidate_t() : accepted(false) {}
     Projection projection;
-    bool minimal;
+    bool accepted;
   };
 
   typedef map<dfs_code_t, Projection, dfs_code_project_compare_t> ProjectionMap;
@@ -96,7 +136,27 @@ class GBolt {
     int prev_nsupport,
     int prev_thread_id,
     int prev_graph_id,
-    bool extend = true);
+    bool extend = true,
+    const resume_node_t *resume = NULL);
+
+  // True once the time limit has passed
+  bool time_limit_exceeded() {
+    if (time_limit_ <= 0) {
+      return false;
+    }
+    if (time_limit_reached_) {
+      return true;
+    }
+    std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start_time_;
+    if (elapsed.count() < time_limit_) {
+      return false;
+    }
+    time_limit_reached_ = true;
+    return true;
+  }
+
+  // Flag an already reported pattern as not extended
+  void mark_unextended(Output *output, int index, stop_reason_t reason);
 
   // True when max_projection_size is set and this projection exceeds it
   bool exceeds_projection_limit(const Projection &projection) const {
@@ -126,30 +186,40 @@ class GBolt {
     build_right_most_path(dfs_codes, right_most_path);
   }
 
-  void enumerate(
+  // Builds the projections of the extensions of `dfs_codes`. With `replay`
+  // set, only the extensions that lead to a pattern to resume are built.
+  // Returns false when the time limit passed before it finished.
+  bool enumerate(
     const vector<Graph> &graphs,
     const DfsCodes &dfs_codes,
     const Projection &projection,
     const Path<int> &right_most_path,
     ProjectionMapBackward &projection_map_backward,
     ProjectionMapForward &projection_map_forward,
-    bool enumerate_forward);
+    bool enumerate_forward,
+    const resume_node_t *replay);
 
   // Returns where to store an embedding of the extension `dfs_code`, or NULL
-  // when extending `dfs_codes` by it does not give a minimal DFS code.
+  // when the extension is not wanted: its DFS code is not minimal or, with
+  // `replay` set, it does not lead to a pattern to resume.
   template <typename CandidateMap>
   Projection *candidate_projection(
     CandidateMap &candidates,
     const dfs_code_t &dfs_code,
-    const DfsCodes &dfs_codes) {
+    const DfsCodes &dfs_codes,
+    const resume_node_t *replay) {
     auto it = candidates.find(dfs_code);
     if (it == candidates.end()) {
       it = candidates.insert(std::make_pair(dfs_code, candidate_t())).first;
-      DfsCodes extended(dfs_codes);
-      extended.emplace_back(&(it->first));
-      it->second.minimal = is_min(extended);
+      if (replay != NULL) {
+        it->second.accepted = replay->child(dfs_code) != NULL;
+      } else {
+        DfsCodes extended(dfs_codes);
+        extended.emplace_back(&(it->first));
+        it->second.accepted = is_min(extended);
+      }
     }
-    return it->second.minimal ? &(it->second.projection) : NULL;
+    return it->second.accepted ? &(it->second.projection) : NULL;
   }
 
   bool get_forward_init(
@@ -163,7 +233,8 @@ class GBolt {
     const Graph &graph,
     const DfsCodes &dfs_codes,
     const Path<int> &right_most_path,
-    ProjectionMapForward &projection_map_forward);
+    ProjectionMapForward &projection_map_forward,
+    const resume_node_t *replay);
 
   void get_other_forward(
     const prev_dfs_t &prev_dfs,
@@ -171,7 +242,8 @@ class GBolt {
     const Graph &graph,
     const DfsCodes &dfs_codes,
     const Path<int> &right_most_path,
-    ProjectionMapForward &projection_map_forward);
+    ProjectionMapForward &projection_map_forward,
+    const resume_node_t *replay);
 
   void get_backward(
     const prev_dfs_t &prev_dfs,
@@ -179,7 +251,8 @@ class GBolt {
     const Graph &graph,
     const DfsCodes &dfs_codes,
     const Path<int> &right_most_path,
-    ProjectionMapBackward &projection_map_backward);
+    ProjectionMapBackward &projection_map_backward,
+    const resume_node_t *replay);
 
   // Count
   int count_support(const Projection &projection);
@@ -239,7 +312,14 @@ class GBolt {
   // than this are reported but not extended (0 = unlimited, i.e. complete
   // mining). Single-edge patterns are always extended.
   size_t max_projection_size_;
-  long num_unextended_patterns_;
+  long num_stopped_by_size_;
+  long num_stopped_by_time_;
+  // Wall-clock budget in seconds since start_time_ (0 = unlimited)
+  double time_limit_;
+  std::chrono::steady_clock::time_point start_time_;
+  std::atomic<bool> time_limit_reached_;
+  // Set when resuming a previous run
+  std::unique_ptr<resume_node_t> resume_root_;
   int nsupport_;
   Output *output_frequent_nodes_;
   gbolt_instance_t *gbolt_instances_;

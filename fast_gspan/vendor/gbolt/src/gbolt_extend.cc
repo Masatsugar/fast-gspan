@@ -5,14 +5,15 @@
 
 namespace gbolt {
 
-void GBolt::enumerate(
+bool GBolt::enumerate(
   const vector<Graph> &graphs,
   const DfsCodes &dfs_codes,
   const Projection &projection,
   const Path<int> &right_most_path,
   ProjectionMapBackward &projection_map_backward,
   ProjectionMapForward &projection_map_forward,
-  bool enumerate_forward) {
+  bool enumerate_forward,
+  const resume_node_t *replay) {
   #ifdef GBOLT_SERIAL
   gbolt_instance_t *instance = gbolt_instances_;
   #else
@@ -21,21 +22,26 @@ void GBolt::enumerate(
   History *history = instance->history;
   // size_t: projections are unbounded by default and may exceed INT_MAX
   for (size_t i = 0; i < projection.size(); ++i) {
+    // Keep the time limit tight even when a single projection is huge
+    if ((i & 4095) == 4095 && time_limit_exceeded()) {
+      return false;
+    }
     const Graph &graph = graphs[projection[i].id];
     history->build(projection[i], graph);
 
     get_backward(projection[i], *history, graph, dfs_codes, right_most_path,
-      projection_map_backward);
+      projection_map_backward, replay);
     // Forward extensions add a vertex. A pattern already at the vertex limit
     // can only grow by backward edges, so do not build them at all.
     if (!enumerate_forward) {
       continue;
     }
     get_first_forward(projection[i], *history, graph, dfs_codes, right_most_path,
-      projection_map_forward);
+      projection_map_forward, replay);
     get_other_forward(projection[i], *history, graph, dfs_codes, right_most_path,
-      projection_map_forward);
+      projection_map_forward, replay);
   }
+  return true;
 }
 
 bool GBolt::get_forward_init(const  vertex_t &vertex, const Graph &graph, Edges &edges) {
@@ -57,7 +63,8 @@ void GBolt::get_backward(
   const Graph &graph,
   const DfsCodes &dfs_codes,
   const Path<int> &right_most_path,
-  ProjectionMapBackward &projection_map_backward) {
+  ProjectionMapBackward &projection_map_backward,
+  const resume_node_t *replay) {
   const edge_t *last_edge = history.get_p_edge(right_most_path[0]);
   const vertex_t *last_node = graph.get_p_vertex(last_edge->to);
   int min_label = dfs_codes[0]->from_label;
@@ -78,7 +85,7 @@ void GBolt::get_backward(
         dfs_code_t dfs_code(from_id, to_id,
           last_node->label, (last_node->edges[j]).label, from_node->label);
         Projection *candidate = candidate_projection(
-          projection_map_backward, dfs_code, dfs_codes);
+          projection_map_backward, dfs_code, dfs_codes, replay);
         if (candidate != NULL) {
           candidate->emplace_back(graph.get_id(), &(last_node->edges[j]), &(prev_dfs));
         }
@@ -93,7 +100,8 @@ void GBolt::get_first_forward(
   const Graph &graph,
   const DfsCodes &dfs_codes,
   const Path<int> &right_most_path,
-  ProjectionMapForward &projection_map_forward) {
+  ProjectionMapForward &projection_map_forward,
+  const resume_node_t *replay) {
   const edge_t *last_edge = history.get_p_edge(right_most_path[0]);
   const vertex_t *last_node = graph.get_p_vertex(last_edge->to);
   int min_label = dfs_codes[0]->from_label;
@@ -112,7 +120,7 @@ void GBolt::get_first_forward(
     dfs_code_t dfs_code(to_id, to_id + 1,
       last_node->label, edge->label, to_node->label);
     Projection *candidate = candidate_projection(
-      projection_map_forward, dfs_code, dfs_codes);
+      projection_map_forward, dfs_code, dfs_codes, replay);
     if (candidate != NULL) {
       candidate->emplace_back(graph.get_id(), edge, &(prev_dfs));
     }
@@ -125,7 +133,8 @@ void GBolt::get_other_forward(
   const Graph &graph,
   const DfsCodes &dfs_codes,
   const Path<int> &right_most_path,
-  ProjectionMapForward &projection_map_forward) {
+  ProjectionMapForward &projection_map_forward,
+  const resume_node_t *replay) {
   int min_label = dfs_codes[0]->from_label;
 
   for (auto i = 0; i < right_most_path.size(); ++i) {
@@ -148,7 +157,7 @@ void GBolt::get_other_forward(
         dfs_code_t dfs_code(from_id, to_id + 1, cur_node->label,
           cur_node->edges[j].label, to_node->label);
         Projection *candidate = candidate_projection(
-          projection_map_forward, dfs_code, dfs_codes);
+          projection_map_forward, dfs_code, dfs_codes, replay);
         if (candidate != NULL) {
           candidate->emplace_back(graph.get_id(), &(cur_node->edges[j]), &(prev_dfs));
         }
