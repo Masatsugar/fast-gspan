@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "fast-gspan"
 version = "0.1.5"
-description = "Fast gSpan (frequent subgraph mining) powered by gBolt C++ backend"
+description = "Fast gSpan (frequent subgraph mining) with a parallel Rust backend"
 readme = "README.md"
 license = "BSD-2-Clause"
 requires-python = ">=3.10"
@@ -22,7 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: C++",
+    "Programming Language :: Rust",
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
@@ -43,12 +43,25 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["fast_gspan"]
+exclude = ["/fast_gspan/vendor/**"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"native/LICENSE" = "fast_gspan/native/LICENSE"
+"native/Cargo.toml" = "fast_gspan/native/Cargo.toml"
+"native/Cargo.lock" = "fast_gspan/native/Cargo.lock"
+"native/src" = "fast_gspan/native/src"
+"fast_gspan/vendor/gbolt/LICENSE" = "fast_gspan/vendor/gbolt/LICENSE"
 
 [tool.hatch.build.targets.wheel.hooks.custom]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "fast_gspan/**",
+    "fast_gspan/*.py",
+    "fast_gspan/vendor/gbolt/LICENSE",
+    "native/Cargo.toml",
+    "native/Cargo.lock",
+    "native/LICENSE",
+    "native/src/**",
     "tests/**",
     "hatch_build.py",
     "README.md",

@@ -1,4 +1,4 @@
-"""Fast gSpan implementation using gBolt C++ backend."""
+"""Fast gSpan implementation using a Rust backend."""
 
 from importlib.metadata import version, PackageNotFoundError
 

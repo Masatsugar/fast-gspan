@@ -6,6 +6,7 @@ build/
 *.so
 
 # gBolt build artifacts
+/native/target/
 fast_gspan/vendor/gbolt/build/
 fast_gspan/vendor/gbolt/include/config.h
 

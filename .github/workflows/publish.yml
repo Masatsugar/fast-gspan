@@ -18,8 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install build tools
-        run: yum install -y cmake gcc-c++ make
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Build wheel
         run: |
@@ -28,11 +27,10 @@ jobs:
 
       - name: Verify GLIBC requirement
         run: |
-          objdump -T dist/*.whl 2>/dev/null || true
-          # Check the binary inside the wheel
+          # Check the Rust executable inside the wheel.
           /opt/python/cp312-cp312/bin/python -c "
           import zipfile, glob, os, subprocess, tempfile
-          whl = glob.glob('dist/*.whl')[0]
+          whl, = glob.glob('dist/*-py3-none-manylinux_2_28_x86_64.whl')
           with zipfile.ZipFile(whl) as z:
               for name in z.namelist():
                   if name.endswith('/gbolt'):
@@ -46,14 +44,19 @@ jobs:
                           for line in r.stdout.splitlines()
                           if 'GLIBC_' in line
                       ))
+                      assert glibc_vers, 'Missing GLIBC symbol information'
+                      assert all(tuple(map(int, v.split('.'))) <= (2, 28) for v in glibc_vers), glibc_vers
                       print(f'Required GLIBC versions: {glibc_vers}')
                       os.unlink(tmp)
                       break
+              else:
+                  raise AssertionError('Missing Rust executable')
           "
 
       - name: Verify wheel works
         run: |
           /opt/python/cp312-cp312/bin/pip install dist/*.whl
+          cd "$(mktemp -d)"
           /opt/python/cp312-cp312/bin/python -c "
           from fast_gspan import FastgSpan
           import networkx as nx
@@ -80,8 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install build tools
-        run: brew install cmake libomp
+      - uses: dtolnay/rust-toolchain@stable
 
       - uses: actions/setup-python@v6
         with:
@@ -92,16 +94,10 @@ jobs:
           pip install build
           python -m build --wheel
 
-      - name: Inspect wheel contents
-        run: |
-          echo "=== Wheel file ==="
-          ls -lh dist/*.whl
-          echo "=== Binary and bundled libs ==="
-          python -m zipfile -l dist/*.whl | grep -E "(gbolt|\.so|\.dylib)"
-
       - name: Verify wheel works
         run: |
           pip install dist/*.whl
+          cd "$(mktemp -d)"
           python -c "
           from fast_gspan import FastgSpan
           import networkx as nx
@@ -131,10 +127,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: dtolnay/rust-toolchain@stable
+
       - name: Build sdist
         run: |
           pip install build
           python -m build --sdist
+          pip wheel --no-deps dist/*.tar.gz -w "$RUNNER_TEMP/wheels"
 
       - uses: actions/upload-artifact@v5
         with:
