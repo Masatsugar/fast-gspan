@@ -1,9 +1,14 @@
 """Tests for fast_gspan standalone package."""
 
+import json
 import random
+import types
 import warnings
+from decimal import Decimal
+from fractions import Fraction
 
 import networkx as nx
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -11,8 +16,10 @@ from fast_gspan.gbolt_wrapper import (
     FastgSpan,
     GBoltWrapper,
     IncompleteResultWarning,
+    _effective_min_support,
     _find_vendor_gbolt,
     _read_gspan_file,
+    _relative_support,
 )
 
 
@@ -66,6 +73,32 @@ def _clique(n: int) -> nx.Graph:
     nx.set_node_attributes(g, 1, "label")
     nx.set_edge_attributes(g, 1, "label")
     return g
+
+
+def _edge_graph(label: int) -> nx.Graph:
+    """A single edge between two vertices labelled *label*."""
+    g = nx.Graph()
+    g.add_node(0, label=label)
+    g.add_node(1, label=label)
+    g.add_edge(0, 1, label=1)
+    return g
+
+
+def _miner_without_gbolt(min_support) -> FastgSpan:
+    """A FastgSpan that needs no gBolt binary, as long as nothing is mined."""
+    fgs = object.__new__(FastgSpan)
+    fgs._gbolt = types.SimpleNamespace(min_support=min_support)
+    return fgs
+
+
+def _rare_edge_graphs() -> list[nx.Graph]:
+    """300 graphs: one edge found in all, one in 2 and one in 1 of them."""
+    common = _edge_graph(1)
+    return (
+        [common] * 297
+        + [nx.disjoint_union(common, _edge_graph(2))] * 2
+        + [nx.disjoint_union(common, _edge_graph(3))]
+    )
 
 
 def _random_graphs(
@@ -275,15 +308,101 @@ class TestEmptyInput:
 
     def test_empty_graphs_fastgspan(self):
         """FastgSpan.run_from_graphs returns empty DataFrame for empty input."""
-        fgs = object.__new__(FastgSpan)
-        fgs.min_support = 2
+        fgs = _miner_without_gbolt(min_support=2)
         fgs.min_num_vertices = 1
         fgs.max_num_vertices = 0
-        fgs._gbolt = None
         df = fgs.run_from_graphs([])
         assert isinstance(df, pd.DataFrame)
         assert len(df) == 0
         assert "graph_ids" in df.columns
+
+
+class TestRelativeSupport:
+    @staticmethod
+    def _gbolt_threshold(min_support: int, n_graphs: int) -> int:
+        """The threshold gBolt derives from the -s value passed to it."""
+        s = float(str(_relative_support(min_support, n_graphs)))
+        assert 0.0 < s <= 1.0
+        # gBolt: nsupport_ = graphs.size() * support_, the size counting "t # -1"
+        return int((n_graphs + 1) * s)
+
+    def test_exact_for_every_small_database(self):
+        for n_graphs in range(1, 301):
+            for min_support in range(1, n_graphs + 1):
+                assert self._gbolt_threshold(min_support, n_graphs) == min_support
+
+    @pytest.mark.parametrize("n_graphs", [249_456, 10**7, 2**31 - 2])
+    def test_exact_for_large_databases(self, n_graphs):
+        for min_support in (1, 2, 3, 100, n_graphs // 100 - 1, n_graphs - 1, n_graphs):
+            assert self._gbolt_threshold(min_support, n_graphs) == min_support
+
+
+class TestMinSupportRecord:
+    @pytest.mark.parametrize(
+        "min_support, expected",
+        [
+            (3, 3),
+            (0, 1),
+            (-5, 1),
+            (2.5, 3),
+            (np.int64(4), 4),
+            (np.float16(2.5), 3),
+            # Not exactly representable as a float
+            (np.int64(2**53 + 3), 2**53 + 3),
+            (Fraction(5, 2), 3),
+            (Decimal("2.5"), 3),
+        ],
+    )
+    def test_effective_min_support(self, min_support, expected):
+        threshold = _effective_min_support(min_support)
+        assert threshold == expected
+        assert type(threshold) is int
+
+    @pytest.mark.skipif(
+        np.finfo(np.longdouble).eps >= np.finfo(np.float64).eps,
+        reason="np.longdouble is no more precise than float here",
+    )
+    def test_effective_min_support_keeps_extended_precision(self):
+        just_above_two = np.nextafter(np.longdouble(2), np.longdouble(3))
+        assert float(just_above_two) == 2.0
+        assert _effective_min_support(just_above_two) == 3
+        # float() would round this up to 2**53 + 4
+        assert _effective_min_support(np.longdouble(2**53 + 3)) == 2**53 + 3
+        # NumPy 1 cannot compare this with a Python int
+        assert _effective_min_support(np.longdouble("1e20")) == 10**20
+
+    def test_rejects_previous_without_record(self):
+        with pytest.raises(ValueError, match="0.1.4 and earlier"):
+            FastgSpan._check_min_support(pd.DataFrame(), 1)
+
+    def test_compares_effective_thresholds(self):
+        previous = pd.DataFrame()
+        previous.attrs["fast_gspan"] = {"min_support": 1}
+        FastgSpan._check_min_support(previous, 1)
+        with pytest.raises(ValueError, match="mined with min_support=1, not 2"):
+            FastgSpan._check_min_support(previous, 2)
+
+    def test_failed_run_is_not_marked(self, tmp_path):
+        """Its empty result must not pass for a complete one when resumed."""
+        failing = tmp_path / "gbolt"
+        failing.write_text("#!/bin/sh\nexit 1\n")
+        failing.chmod(0o755)
+        fgs = FastgSpan(gbolt_path=str(failing), min_support=2)
+        with pytest.warns(RuntimeWarning, match="exited with code 1"):
+            df = fgs.run_from_graphs(_sample_graphs())
+        assert df.empty
+        assert df.attrs == {}
+        with pytest.raises(ValueError, match="failed runs"):
+            fgs.resume_from_graphs(_sample_graphs(), df)
+
+    def test_records_plain_int(self):
+        """NumPy scalars in attrs would break DataFrame.to_parquet()."""
+        fgs = _miner_without_gbolt(min_support=np.int64(3))
+        fgs.min_num_vertices = 1
+        fgs.max_num_vertices = 0
+        df = fgs.run_from_graphs([])
+        assert type(df.attrs["fast_gspan"]["min_support"]) is int
+        json.dumps(df.attrs)
 
 
 # ---- integration tests (require gBolt binary) ----
@@ -379,6 +498,37 @@ class TestIntegration:
         assert supports[4500] == supports[10]
         assert supports[4500][path] == 2
         assert supports[4500][triangle] == 1
+
+    @pytest.mark.parametrize("min_support", [1, 2, 3, 300, 301])
+    def test_min_support_is_exact_for_rare_patterns(self, min_support):
+        """min_support is applied as given, even far below 1% of the graphs.
+
+        It used to be raised to 1% of the graphs without a warning: here
+        that is 3, so the edge found in 2 of the 300 graphs was dropped.
+        """
+        graphs = _rare_edge_graphs()
+        supports = {
+            "(0, 1, 1, 1, 1)": 300,
+            "(0, 1, 2, 1, 2)": 2,
+            "(0, 1, 3, 1, 3)": 1,
+        }
+        expected = {d: s for d, s in supports.items() if s >= min_support}
+
+        df = FastgSpan(min_support=min_support).run_from_graphs(graphs)
+        assert dict(zip(df["description"], df["support"])) == expected
+
+        # gBolt itself uses the exact threshold, with no filtering afterwards
+        patterns = GBoltWrapper(min_support=min_support).mine_frequent_subgraphs(
+            graphs
+        )
+        assert sorted(p["support"] for p in patterns) == sorted(expected.values())
+
+    def test_min_support_changed_after_construction_is_mined_with(self):
+        fgs = FastgSpan(min_support=3)
+        fgs.min_support = 2
+        df = fgs.run_from_graphs(_rare_edge_graphs())
+        assert sorted(df["support"]) == [2, 300]
+        assert df.attrs["fast_gspan"] == {"min_support": 2}
 
     def test_projection_limit_warns_instead_of_dropping_silently(self):
         graphs = [_clique(6)] * 20  # 20 * 120 = 2,400 embeddings of the path
@@ -552,6 +702,44 @@ class TestIntegration:
             FastgSpan(min_support=3).resume_from_graphs(
                 _random_graphs(seed=1), partial
             )
+
+    def test_results_record_min_support(self):
+        graphs = _random_graphs(seed=0)
+        with pytest.warns(IncompleteResultWarning):
+            partial = FastgSpan(min_support=3, time_limit=1e-9).run_from_graphs(graphs)
+        resumed = FastgSpan(min_support=3).resume_from_graphs(graphs, partial)
+        assert partial.attrs["fast_gspan"] == {"min_support": 3}
+        assert resumed.attrs["fast_gspan"] == {"min_support": 3}
+
+    def test_resume_rejects_other_min_support(self):
+        """A lower min_support would silently miss the patterns in between."""
+        graphs = _random_graphs(seed=0)
+        with pytest.warns(IncompleteResultWarning):
+            partial = FastgSpan(min_support=3, time_limit=1e-9).run_from_graphs(graphs)
+        with pytest.raises(ValueError, match="mined with min_support=3, not 2"):
+            FastgSpan(min_support=2).resume_from_graphs(graphs, partial)
+
+    def test_resume_rejects_results_without_record(self):
+        """Like those of 0.1.4, which mined these graphs at 3 instead of 2.
+
+        Resuming such a result could not find the edge in 2 of the graphs,
+        yet would clear every stop_reason.
+        """
+        graphs = _rare_edge_graphs()
+        with pytest.warns(IncompleteResultWarning):
+            partial = FastgSpan(min_support=2, time_limit=1e-9).run_from_graphs(graphs)
+        partial.attrs.clear()
+        for graphs_to_resume in (graphs, []):
+            with pytest.raises(ValueError, match="0.1.4 and earlier"):
+                FastgSpan(min_support=2).resume_from_graphs(graphs_to_resume, partial)
+
+    def test_resume_without_graphs_keeps_previous(self):
+        graphs = _random_graphs(seed=0)
+        with pytest.warns(IncompleteResultWarning):
+            partial = FastgSpan(min_support=3, time_limit=1e-9).run_from_graphs(graphs)
+        unchanged = FastgSpan(min_support=3).resume_from_graphs([], partial)
+        pd.testing.assert_frame_equal(unchanged, partial)
+        assert unchanged.attrs == partial.attrs
 
     def test_resume_of_complete_result_changes_nothing(self):
         graphs = _duplicate_graphs(10)

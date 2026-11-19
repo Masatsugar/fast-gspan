@@ -132,8 +132,6 @@ warnings.simplefilter("error", IncompleteResultWarning)
 
 A pattern of two or more edges with more embeddings than the limit is still reported, with its exact support, but is not extended, so its supergraphs may be missing. Whenever this happens an `IncompleteResultWarning` states how many patterns were affected. Single-edge patterns are always extended.
 
-**Known limitation:** a `min_support` below 1% of the number of graphs is raised to 1% without a warning, so patterns rarer than 1% are not returned.
-
 ## Time limit and resume
 
 `time_limit` stops the search after a number of seconds and returns what was found until then. Every returned pattern and support is exact. The patterns that were reached but not extended are flagged in the `stop_reason` column, and `resume_from_graphs` continues from them:
@@ -155,7 +153,8 @@ Once no `stop_reason` is left, the result is the same as that of a single uninte
 
 - **A partial result is not "all the small patterns".** The search is depth-first, so some branches have been explored deeply and others not at all. With several threads, which patterns are found before the limit varies from run to run.
 - **Each resume has a start-up cost.** The embeddings are not stored: gBolt re-reads the input and works its way back to the unextended patterns before it finds new ones. `time_limit` has to be well above that. A resume that extended nothing says so in its warning.
-- **Use the same graphs and settings.** The graphs must be the same, in the same order, with the same `min_support` and `max_num_vertices`. If the unextended patterns are not found again with the same support, `ValueError` is raised. A larger `max_num_vertices` is not detected: the patterns that were already extended under the old limit are not grown further.
+- **Use the same graphs and settings.** The graphs must be the same, in the same order, with the same `min_support` and `max_num_vertices`. If the unextended patterns are not found again with the same support, `ValueError` is raised. Each result records its `min_support` in `DataFrame.attrs` (kept by `to_pickle`), and resuming with another one raises `ValueError`. A larger `max_num_vertices` is not detected: the patterns that were already extended under the old limit are not grown further.
+- **Results of 0.1.4 and earlier cannot be resumed.** Those versions raised a `min_support` below 1% of the graphs to 1% without a warning, and resuming cannot find the patterns this left out. They have no `attrs` record, and a result without one is rejected with `ValueError`. Run `run_from_graphs` again instead.
 - **`max_projection_size` works the same way.** Patterns it stopped are flagged too, and stay unextended until you resume with a larger limit or none.
 - **Small unextended patterns stay in the result.** They are kept even below `min_num_vertices`, because they are needed to resume, and are dropped once they have been extended.
 - **A killed run cannot be resumed.** `time_limit` ends the run in an orderly way. If gBolt is killed instead, by `timeout` or for lack of memory, nothing is returned ([#1](https://github.com/Masatsugar/fast-gspan/issues/1)).
