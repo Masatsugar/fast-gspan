@@ -4,6 +4,8 @@ Standalone version with no dependency on neural_graph_mining.
 """
 
 import glob
+import math
+import operator
 import os
 import subprocess
 import sys
@@ -57,6 +59,43 @@ def _warn_incomplete(
             "max_projection_size."
         )
     warnings.warn(message, IncompleteResultWarning, stacklevel=stacklevel + 1)
+
+
+def _effective_min_support(min_support: float) -> int:
+    """Return the support threshold mined with for *min_support*.
+
+    A plain ``int``, also for NumPy scalars. Every pattern occurs in at least
+    one graph, so the threshold is at least 1.
+    """
+    try:
+        # Exact for int and NumPy integers, which math.ceil turns into floats
+        threshold = operator.index(min_support)
+    except TypeError:
+        if hasattr(min_support, "as_integer_ratio"):
+            # Exact for floats of any precision. math.ceil goes through a
+            # Python float, which rounds np.longdouble either way.
+            numerator, denominator = min_support.as_integer_ratio()
+            threshold = -(-numerator // denominator)
+        else:
+            threshold = math.ceil(min_support)
+    return max(threshold, 1)
+
+
+def _relative_support(min_support: int, n_graphs: int) -> float:
+    """Return the value of gBolt's ``-s`` option for an absolute *min_support*.
+
+    gBolt mines the patterns found in at least ``int(N * s)`` graphs, where N
+    also counts the ``t # -1`` line that ends the input, so N is
+    ``n_graphs + 1``. Aiming halfway between two counts keeps rounding errors
+    from landing on the wrong one. Requires ``1 <= min_support <= n_graphs``,
+    which keeps the result within gBolt's range ``(0, 1]``.
+    """
+    return (min_support + 0.5) / (n_graphs + 1)
+
+
+# Key of the DataFrame.attrs entry in which FastgSpan records how a result
+# was mined, for resume_from_graphs() to check
+_ATTRS_KEY = "fast_gspan"
 
 
 class ProgressMonitor:
@@ -426,14 +465,24 @@ class GBoltWrapper:
         self,
         graphs: List[nx.Graph],
         resume_from: Optional[List[DfsCode]] = None,
+        min_support: Optional[int] = None,
     ) -> Tuple[Optional[List[Dict[str, Any]]], bool]:
         """Run gBolt once, without issuing IncompleteResultWarning.
 
         Returns the raw patterns (None if gBolt failed) and whether
-        ``time_limit`` passed during the run.
+        ``time_limit`` passed during the run. *min_support* overrides
+        ``self.min_support``.
         """
         if not graphs:
             return [], False
+
+        min_support = _effective_min_support(
+            self.min_support if min_support is None else min_support
+        )
+        if min_support > len(graphs):
+            # No pattern can occur in more graphs than there are
+            return [], False
+        relative_support = _relative_support(min_support, len(graphs))
 
         started = time.monotonic()
 
@@ -442,11 +491,6 @@ class GBoltWrapper:
             output_file = os.path.join(temp_dir, "output.txt")
 
             self._graphs_to_gbolt_file(graphs, input_file)
-
-            n_graphs = len(graphs)
-            relative_support = max(self.min_support / n_graphs, 0.01)
-            if relative_support >= 1.0:
-                relative_support = 1.0 - 0.5 / n_graphs
 
             cmd = [
                 self._gbolt_path,
@@ -568,7 +612,7 @@ class FastgSpan:
         max_projection_size: int = 0,
         time_limit: Optional[float] = None,
     ):
-        self.min_support = min_support
+        # min_support is a property of the backend, see below
         self.min_num_vertices = min_num_vertices
         self.max_num_vertices = max_num_vertices
         self.num_threads = num_threads
@@ -589,6 +633,19 @@ class FastgSpan:
             max_projection_size=max_projection_size,
             time_limit=time_limit,
         )
+
+    @property
+    def min_support(self) -> int:
+        """Minimum absolute support.
+
+        Stored in the backend only, so that changing it after construction
+        changes what is mined, filtered and recorded alike.
+        """
+        return self._gbolt.min_support
+
+    @min_support.setter
+    def min_support(self, value: int) -> None:
+        self._gbolt.min_support = value
 
     # ----- pattern utilities -----
 
@@ -622,13 +679,16 @@ class FastgSpan:
 
     # ----- mining -----
 
-    def _pattern_to_row(self, pattern: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _pattern_to_row(
+        self, pattern: Dict[str, Any], threshold: int
+    ) -> Optional[Dict[str, Any]]:
         """Convert a raw pattern into a result row, or None if it is filtered out.
 
-        ``min_num_vertices`` is not applied here, see :meth:`_is_result_row`.
+        *threshold* is the effective min_support of the call. ``min_num_vertices``
+        is not applied here, see :meth:`_is_result_row`.
         """
         num_vertices = len(pattern["vertices"])
-        if pattern["support"] < self.min_support:
+        if pattern["support"] < threshold:
             return None
         if self.max_num_vertices > 0 and num_vertices > self.max_num_vertices:
             return None
@@ -653,9 +713,9 @@ class FastgSpan:
         return row["num_vert"] >= self.min_num_vertices or bool(row["stop_reason"])
 
     def _patterns_to_rows(
-        self, patterns: Optional[List[Dict[str, Any]]]
+        self, patterns: Optional[List[Dict[str, Any]]], threshold: int
     ) -> List[Dict[str, Any]]:
-        rows = (self._pattern_to_row(pattern) for pattern in patterns or [])
+        rows = (self._pattern_to_row(pattern, threshold) for pattern in patterns or [])
         return [row for row in rows if row is not None]
 
     @staticmethod
@@ -667,19 +727,67 @@ class FastgSpan:
             for frm, to, label in row["edges"]
         ]
 
+    @staticmethod
+    def _mark(df: pd.DataFrame, threshold: int) -> pd.DataFrame:
+        """Record in ``df.attrs`` the support *threshold* it was mined with.
+
+        *threshold* comes from :func:`_effective_min_support`, so it is a plain
+        ``int`` and the attrs stay JSON-serializable (Parquet).
+        """
+        df.attrs[_ATTRS_KEY] = {"min_support": threshold}
+        return df
+
+    @staticmethod
+    def _check_min_support(previous: pd.DataFrame, threshold: int) -> None:
+        """Raise ValueError unless *previous* was mined with *threshold*.
+
+        Resuming cannot find the patterns that a higher threshold left out:
+        they are not below any unextended pattern of *previous*. *threshold*
+        is the effective min_support of the resume.
+        """
+        settings = previous.attrs.get(_ATTRS_KEY)
+        if not (isinstance(settings, dict) and "min_support" in settings):
+            # fast-gspan 0.1.4 and earlier raised a min_support below 1% of
+            # the graphs to 1%, and the threshold they used cannot be worked
+            # out reliably afterwards
+            raise ValueError(
+                "previous has no record of the min_support it was mined with "
+                "(previous.attrs), as is the case for results of failed runs "
+                "and of fast-gspan 0.1.4 and earlier. Those versions could "
+                "mine with a higher threshold than min_support, and resuming "
+                "cannot find the patterns this left out: call "
+                "run_from_graphs() again"
+            )
+        if settings["min_support"] != threshold:
+            raise ValueError(
+                f"previous was mined with min_support="
+                f"{settings['min_support']}, not {threshold}"
+            )
+
     def run_from_graphs(self, graphs: List[nx.Graph]) -> pd.DataFrame:
         """Mine frequent subgraphs from *graphs* and return a DataFrame."""
+        # Read once: mining, filtering and the attrs record use the same value
+        threshold = _effective_min_support(self.min_support)
         if not graphs:
-            return pd.DataFrame(columns=_RESULT_COLUMNS)
+            return self._mark(pd.DataFrame(columns=_RESULT_COLUMNS), threshold)
 
-        patterns, _ = self._gbolt._run(graphs)
-        rows = [row for row in self._patterns_to_rows(patterns) if self._is_result_row(row)]
+        patterns, _ = self._gbolt._run(graphs, min_support=threshold)
+        rows = [
+            row
+            for row in self._patterns_to_rows(patterns, threshold)
+            if self._is_result_row(row)
+        ]
 
         stop_reasons = [row["stop_reason"] for row in rows if row["stop_reason"]]
         if stop_reasons:
             _warn_incomplete(stop_reasons, stacklevel=2)
 
-        return pd.DataFrame(rows, columns=_RESULT_COLUMNS)
+        df = pd.DataFrame(rows, columns=_RESULT_COLUMNS)
+        if patterns is None:
+            # gBolt failed (already warned about): the empty result is left
+            # unmarked, so that it cannot be resumed as if it were complete
+            return df
+        return self._mark(df, threshold)
 
     def run_from_file(self, filepath: str) -> pd.DataFrame:
         """Read graphs from a gSpan-format file and mine frequent subgraphs."""
@@ -702,12 +810,20 @@ class FastgSpan:
         The returned DataFrame holds the rows of *previous* with an updated
         ``stop_reason``, plus the newly found patterns. It is complete once no
         ``stop_reason`` is left. *previous* is not modified.
+
+        Results record their ``min_support`` in ``DataFrame.attrs``. A
+        *previous* mined with another one, or without that record (results of
+        fast-gspan 0.1.4 and earlier), is rejected with ValueError.
         """
         if "stop_reason" not in previous.columns:
             raise ValueError(
                 "previous has no 'stop_reason' column; pass a result of "
                 "run_from_graphs() or resume_from_graphs()"
             )
+        # Read once: checking, mining, filtering and the attrs record use the
+        # same value
+        threshold = _effective_min_support(self.min_support)
+        self._check_min_support(previous, threshold)
 
         records = previous.to_dict("records")
         for record in records:
@@ -718,13 +834,15 @@ class FastgSpan:
             return previous.copy()
 
         dfs_codes = [self._row_dfs_code(record) for record in pending.values()]
-        patterns, time_limit_reached = self._gbolt._run(graphs, resume_from=dfs_codes)
+        patterns, time_limit_reached = self._gbolt._run(
+            graphs, resume_from=dfs_codes, min_support=threshold
+        )
         if patterns is None:
             # gBolt failed (already warned about): nothing was resumed
             return previous.copy()
 
         new_rows: Dict[str, Dict[str, Any]] = {}
-        for row in self._patterns_to_rows(patterns):
+        for row in self._patterns_to_rows(patterns, threshold):
             new_rows.setdefault(row["description"], row)
 
         progressed = False
@@ -762,7 +880,7 @@ class FastgSpan:
         if stop_reasons:
             _warn_incomplete(stop_reasons, stacklevel=2, progressed=progressed)
 
-        return pd.DataFrame(merged, columns=_RESULT_COLUMNS)
+        return self._mark(pd.DataFrame(merged, columns=_RESULT_COLUMNS), threshold)
 
     def resume_from_file(self, filepath: str, previous: pd.DataFrame) -> pd.DataFrame:
         """Like :meth:`resume_from_graphs`, for graphs in a gSpan-format file."""
