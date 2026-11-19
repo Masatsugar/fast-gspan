@@ -1,0 +1,842 @@
+{
+  "inline_vectors": {
+    "system": "Linux-6.8.0-136-generic-x86_64-with-glibc2.35",
+    "python": "3.13.13",
+    "networkx": "3.6.1",
+    "seed": 42,
+    "repetitions": 3,
+    "binaries": {
+      "streaming_std": {
+        "name": "fast-gspan-streaming-std",
+        "sha256": "2fd11fad7b3f9b55148d1220de108719e42dce9bbe1cfa24ff7fd6682874fa43"
+      },
+      "smallvec": {
+        "name": "gbolt",
+        "sha256": "e333656b48480e1c2e1a3989f602522c04b3051b65453655b7238072958b2870"
+      }
+    },
+    "cases": [
+      {
+        "workload": "dense",
+        "parameters": {
+          "graphs": 200,
+          "vertices": 30,
+          "edges": 90,
+          "min_support": 20,
+          "max_vertices": 6,
+          "uniform_clique": false
+        },
+        "input_sha256": "d3578396118a258dc57b7b24ab098c7dff8e696d50738c73a256a029b527cb95",
+        "threads": 8,
+        "interface": "cli",
+        "patterns": 104084,
+        "result_sha256": "30602683c5ac03c344722fd3da89baac9bfaeb5b9dd2bc2d376c75043c8f0193",
+        "samples": {
+          "streaming_std": [
+            {
+              "seconds": 1.8326118513941765,
+              "peak_rss_mib": 98.7421875
+            },
+            {
+              "seconds": 1.509589670225978,
+              "peak_rss_mib": 102.90625
+            },
+            {
+              "seconds": 1.758137907832861,
+              "peak_rss_mib": 104.42578125
+            }
+          ],
+          "smallvec": [
+            {
+              "seconds": 1.6296452712267637,
+              "peak_rss_mib": 111.734375
+            },
+            {
+              "seconds": 2.2358223274350166,
+              "peak_rss_mib": 105.1328125
+            },
+            {
+              "seconds": 1.7848370559513569,
+              "peak_rss_mib": 99.84765625
+            }
+          ]
+        },
+        "summary": {
+          "streaming_std": {
+            "median_s": 1.758137907832861,
+            "q1_s": 1.6338637890294194,
+            "q3_s": 1.7953748796135187,
+            "median_peak_rss_mib": 102.90625
+          },
+          "smallvec": {
+            "median_s": 1.7848370559513569,
+            "q1_s": 1.7072411635890603,
+            "q3_s": 2.0103296916931868,
+            "median_peak_rss_mib": 105.1328125
+          }
+        },
+        "speedup": 0.9850411285279682
+      },
+      {
+        "workload": "dense",
+        "parameters": {
+          "graphs": 200,
+          "vertices": 30,
+          "edges": 90,
+          "min_support": 20,
+          "max_vertices": 6,
+          "uniform_clique": false
+        },
+        "input_sha256": "d3578396118a258dc57b7b24ab098c7dff8e696d50738c73a256a029b527cb95",
+        "threads": 1,
+        "interface": "cli",
+        "patterns": 104084,
+        "result_sha256": "30602683c5ac03c344722fd3da89baac9bfaeb5b9dd2bc2d376c75043c8f0193",
+        "samples": {
+          "streaming_std": [
+            {
+              "seconds": 9.553999371826649,
+              "peak_rss_mib": 29.11328125
+            },
+            {
+              "seconds": 7.577434211969376,
+              "peak_rss_mib": 29.375
+            },
+            {
+              "seconds": 8.793687196448445,
+              "peak_rss_mib": 28.65625
+            }
+          ],
+          "smallvec": [
+            {
+              "seconds": 10.869177535176277,
+              "peak_rss_mib": 28.38671875
+            },
+            {
+              "seconds": 10.357149858027697,
+              "peak_rss_mib": 28.765625
+            },
+            {
+              "seconds": 11.100151168182492,
+              "peak_rss_mib": 28.296875
+            }
+          ]
+        },
+        "summary": {
+          "streaming_std": {
+            "median_s": 8.793687196448445,
+            "q1_s": 8.18556070420891,
+            "q3_s": 9.173843284137547,
+            "median_peak_rss_mib": 29.11328125
+          },
+          "smallvec": {
+            "median_s": 10.869177535176277,
+            "q1_s": 10.613163696601987,
+            "q3_s": 10.984664351679385,
+            "median_peak_rss_mib": 28.38671875
+          }
+        },
+        "speedup": 0.8090480781999508
+      }
+    ]
+  },
+  "support_screen": {
+    "system": "Linux-6.8.0-136-generic-x86_64-with-glibc2.35",
+    "python": "3.13.13",
+    "networkx": "3.6.1",
+    "seed": 42,
+    "repetitions": 2,
+    "binaries": {
+      "streaming_std": {
+        "name": "fast-gspan-streaming-std",
+        "sha256": "2fd11fad7b3f9b55148d1220de108719e42dce9bbe1cfa24ff7fd6682874fa43"
+      },
+      "support_first": {
+        "name": "gbolt",
+        "sha256": "e91091a4846499b81bab5cc16e3f3848e7222b9ab24e98557ec1d20e33ce42ab"
+      }
+    },
+    "cases": [
+      {
+        "workload": "dense",
+        "parameters": {
+          "graphs": 200,
+          "vertices": 30,
+          "edges": 90,
+          "min_support": 20,
+          "max_vertices": 6,
+          "uniform_clique": false
+        },
+        "input_sha256": "d3578396118a258dc57b7b24ab098c7dff8e696d50738c73a256a029b527cb95",
+        "threads": 8,
+        "interface": "cli",
+        "patterns": 104084,
+        "result_sha256": "30602683c5ac03c344722fd3da89baac9bfaeb5b9dd2bc2d376c75043c8f0193",
+        "samples": {
+          "streaming_std": [
+            {
+              "seconds": 1.9358431212604046,
+              "peak_rss_mib": 108.6796875
+            },
+            {
+              "seconds": 1.77761922031641,
+              "peak_rss_mib": 98.42578125
+            }
+          ],
+          "support_first": [
+            {
+              "seconds": 1.4391583278775215,
+              "peak_rss_mib": 100.55859375
+            },
+            {
+              "seconds": 1.7316698767244816,
+              "peak_rss_mib": 91.5703125
+            }
+          ]
+        },
+        "summary": {
+          "streaming_std": {
+            "median_s": 1.8567311707884073,
+            "q1_s": 1.8171751955524087,
+            "q3_s": 1.896287146024406,
+            "median_peak_rss_mib": 103.552734375
+          },
+          "support_first": {
+            "median_s": 1.5854141023010015,
+            "q1_s": 1.5122862150892615,
+            "q3_s": 1.6585419895127416,
+            "median_peak_rss_mib": 96.064453125
+          }
+        },
+        "speedup": 1.1711332503562495
+      }
+    ]
+  },
+  "matched_small_workloads": {
+    "system": "Linux-6.8.0-136-generic-x86_64-with-glibc2.35",
+    "python": "3.13.13",
+    "networkx": "3.6.1",
+    "seed": 42,
+    "repetitions": 5,
+    "binaries": {
+      "reference_rust": {
+        "name": "fast-gspan-rust-final",
+        "sha256": "348d56bfe4a46890ab6fcd616e6c3983029c8e5d01255a9696b1423e5d52248b"
+      },
+      "rust": {
+        "name": "fast-gspan-rust-optimized",
+        "sha256": "bb930213621ba4f33738b7e5d8862d377d4dea7bacd58b48dad8225cb5ce4c1b"
+      }
+    },
+    "cases": [
+      {
+        "workload": "sparse",
+        "parameters": {
+          "graphs": 500,
+          "vertices": 30,
+          "edges": 35,
+          "min_support": 25,
+          "max_vertices": 5,
+          "uniform_clique": false
+        },
+        "input_sha256": "62e8c6f0751889022caf6a6d4d772ef945c315c6385b5c9beccae24866e42a01",
+        "threads": 1,
+        "interface": "cli",
+        "patterns": 943,
+        "result_sha256": "470f8c93da052f820e45cb2942e13e1b9f9639c6e9033453f29b3ddb8b3e243f",
+        "samples": {
+          "reference_rust": [
+            {
+              "seconds": 0.05512312054634094,
+              "peak_rss_mib": 7.23828125
+            },
+            {
+              "seconds": 0.054651420563459396,
+              "peak_rss_mib": 7.2421875
+            },
+            {
+              "seconds": 0.05378353409469128,
+              "peak_rss_mib": 7.5
+            },
+            {
+              "seconds": 0.055221037939190865,
+              "peak_rss_mib": 7.25
+            },
+            {
+              "seconds": 0.05484210327267647,
+              "peak_rss_mib": 7.25
+            }
+          ],
+          "rust": [
+            {
+              "seconds": 0.053885070607066154,
+              "peak_rss_mib": 5.9921875
+            },
+            {
+              "seconds": 0.05278033949434757,
+              "peak_rss_mib": 6.0703125
+            },
+            {
+              "seconds": 0.05330534838140011,
+              "peak_rss_mib": 6.19921875
+            },
+            {
+              "seconds": 0.053884075954556465,
+              "peak_rss_mib": 6.1484375
+            },
+            {
+              "seconds": 0.05439933203160763,
+              "peak_rss_mib": 6.0859375
+            }
+          ]
+        },
+        "summary": {
+          "reference_rust": {
+            "median_s": 0.05484210327267647,
+            "q1_s": 0.054651420563459396,
+            "q3_s": 0.05512312054634094,
+            "median_peak_rss_mib": 7.25
+          },
+          "rust": {
+            "median_s": 0.053884075954556465,
+            "q1_s": 0.05330534838140011,
+            "q3_s": 0.053885070607066154,
+            "median_peak_rss_mib": 6.0859375
+          }
+        },
+        "speedup": 1.0177794144401393
+      },
+      {
+        "workload": "sparse",
+        "parameters": {
+          "graphs": 500,
+          "vertices": 30,
+          "edges": 35,
+          "min_support": 25,
+          "max_vertices": 5,
+          "uniform_clique": false
+        },
+        "input_sha256": "62e8c6f0751889022caf6a6d4d772ef945c315c6385b5c9beccae24866e42a01",
+        "threads": 1,
+        "interface": "api",
+        "patterns": 943,
+        "result_sha256": "470f8c93da052f820e45cb2942e13e1b9f9639c6e9033453f29b3ddb8b3e243f",
+        "samples": {
+          "reference_rust": [
+            {
+              "seconds": 0.07782636024057865,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.07721346616744995,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.07879596948623657,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.08254940435290337,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.07843747362494469,
+              "peak_rss_mib": null
+            }
+          ],
+          "rust": [
+            {
+              "seconds": 0.07946345023810863,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.08854491263628006,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.07837128639221191,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.07721700705587864,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.07565249130129814,
+              "peak_rss_mib": null
+            }
+          ]
+        },
+        "summary": {
+          "reference_rust": {
+            "median_s": 0.07843747362494469,
+            "q1_s": 0.07782636024057865,
+            "q3_s": 0.07879596948623657
+          },
+          "rust": {
+            "median_s": 0.07837128639221191,
+            "q1_s": 0.07721700705587864,
+            "q3_s": 0.07946345023810863
+          }
+        },
+        "speedup": 1.0008445342137366
+      },
+      {
+        "workload": "sparse",
+        "parameters": {
+          "graphs": 500,
+          "vertices": 30,
+          "edges": 35,
+          "min_support": 25,
+          "max_vertices": 5,
+          "uniform_clique": false
+        },
+        "input_sha256": "62e8c6f0751889022caf6a6d4d772ef945c315c6385b5c9beccae24866e42a01",
+        "threads": 8,
+        "interface": "cli",
+        "patterns": 943,
+        "result_sha256": "470f8c93da052f820e45cb2942e13e1b9f9639c6e9033453f29b3ddb8b3e243f",
+        "samples": {
+          "reference_rust": [
+            {
+              "seconds": 0.016502931714057922,
+              "peak_rss_mib": 12.5
+            },
+            {
+              "seconds": 0.017239468172192574,
+              "peak_rss_mib": 11.5
+            },
+            {
+              "seconds": 0.01800130307674408,
+              "peak_rss_mib": 11.93359375
+            },
+            {
+              "seconds": 0.017097635194659233,
+              "peak_rss_mib": 12.0
+            },
+            {
+              "seconds": 0.017626876011490822,
+              "peak_rss_mib": 12.69921875
+            }
+          ],
+          "rust": [
+            {
+              "seconds": 0.015282034873962402,
+              "peak_rss_mib": 11.24609375
+            },
+            {
+              "seconds": 0.01458347961306572,
+              "peak_rss_mib": 10.36328125
+            },
+            {
+              "seconds": 0.014308534562587738,
+              "peak_rss_mib": 10.75
+            },
+            {
+              "seconds": 0.01528218388557434,
+              "peak_rss_mib": 11.0
+            },
+            {
+              "seconds": 0.014276962727308273,
+              "peak_rss_mib": 10.5859375
+            }
+          ]
+        },
+        "summary": {
+          "reference_rust": {
+            "median_s": 0.017239468172192574,
+            "q1_s": 0.017097635194659233,
+            "q3_s": 0.017626876011490822,
+            "median_peak_rss_mib": 12.0
+          },
+          "rust": {
+            "median_s": 0.01458347961306572,
+            "q1_s": 0.014308534562587738,
+            "q3_s": 0.015282034873962402,
+            "median_peak_rss_mib": 10.75
+          }
+        },
+        "speedup": 1.1821231029628405
+      },
+      {
+        "workload": "sparse",
+        "parameters": {
+          "graphs": 500,
+          "vertices": 30,
+          "edges": 35,
+          "min_support": 25,
+          "max_vertices": 5,
+          "uniform_clique": false
+        },
+        "input_sha256": "62e8c6f0751889022caf6a6d4d772ef945c315c6385b5c9beccae24866e42a01",
+        "threads": 8,
+        "interface": "api",
+        "patterns": 943,
+        "result_sha256": "470f8c93da052f820e45cb2942e13e1b9f9639c6e9033453f29b3ddb8b3e243f",
+        "samples": {
+          "reference_rust": [
+            {
+              "seconds": 0.04330219514667988,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.0417306087911129,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.05485427565872669,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.042801035568118095,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.049728626385331154,
+              "peak_rss_mib": null
+            }
+          ],
+          "rust": [
+            {
+              "seconds": 0.04005386680364609,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.03883941099047661,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.038922423496842384,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.03994269669055939,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.040576208382844925,
+              "peak_rss_mib": null
+            }
+          ]
+        },
+        "summary": {
+          "reference_rust": {
+            "median_s": 0.04330219514667988,
+            "q1_s": 0.042801035568118095,
+            "q3_s": 0.049728626385331154
+          },
+          "rust": {
+            "median_s": 0.03994269669055939,
+            "q1_s": 0.038922423496842384,
+            "q3_s": 0.04005386680364609
+          }
+        },
+        "speedup": 1.084107953004448
+      },
+      {
+        "workload": "k6",
+        "parameters": {
+          "graphs": 4500,
+          "vertices": 6,
+          "edges": 15,
+          "min_support": 4500,
+          "max_vertices": 3,
+          "uniform_clique": true
+        },
+        "input_sha256": "133e45e2856cbb32753bd00c50d5da11f6a614618a5d650ca6beeb480985a800",
+        "threads": 1,
+        "interface": "cli",
+        "patterns": 3,
+        "result_sha256": "1cbcbca85ac7567206032ba9b1d2bc80585888772f64e71ebd7b629afb44a6d8",
+        "samples": {
+          "reference_rust": [
+            {
+              "seconds": 0.04931493289768696,
+              "peak_rss_mib": 46.0
+            },
+            {
+              "seconds": 0.048484981060028076,
+              "peak_rss_mib": 46.0
+            },
+            {
+              "seconds": 0.05004178546369076,
+              "peak_rss_mib": 45.75
+            },
+            {
+              "seconds": 0.05256037227809429,
+              "peak_rss_mib": 46.0
+            },
+            {
+              "seconds": 0.05859977938234806,
+              "peak_rss_mib": 46.25
+            }
+          ],
+          "rust": [
+            {
+              "seconds": 0.053092263638973236,
+              "peak_rss_mib": 45.75
+            },
+            {
+              "seconds": 0.05106987617909908,
+              "peak_rss_mib": 46.0
+            },
+            {
+              "seconds": 0.05784839577972889,
+              "peak_rss_mib": 46.0
+            },
+            {
+              "seconds": 0.051480427384376526,
+              "peak_rss_mib": 45.75
+            },
+            {
+              "seconds": 0.05840230546891689,
+              "peak_rss_mib": 46.0
+            }
+          ]
+        },
+        "summary": {
+          "reference_rust": {
+            "median_s": 0.05004178546369076,
+            "q1_s": 0.04931493289768696,
+            "q3_s": 0.05256037227809429,
+            "median_peak_rss_mib": 46.0
+          },
+          "rust": {
+            "median_s": 0.053092263638973236,
+            "q1_s": 0.051480427384376526,
+            "q3_s": 0.05784839577972889,
+            "median_peak_rss_mib": 46.0
+          }
+        },
+        "speedup": 0.9425438290590566
+      },
+      {
+        "workload": "k6",
+        "parameters": {
+          "graphs": 4500,
+          "vertices": 6,
+          "edges": 15,
+          "min_support": 4500,
+          "max_vertices": 3,
+          "uniform_clique": true
+        },
+        "input_sha256": "133e45e2856cbb32753bd00c50d5da11f6a614618a5d650ca6beeb480985a800",
+        "threads": 1,
+        "interface": "api",
+        "patterns": 3,
+        "result_sha256": "1cbcbca85ac7567206032ba9b1d2bc80585888772f64e71ebd7b629afb44a6d8",
+        "samples": {
+          "reference_rust": [
+            {
+              "seconds": 0.08003542199730873,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.0790906697511673,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.08053930476307869,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.08073225617408752,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.08154388517141342,
+              "peak_rss_mib": null
+            }
+          ],
+          "rust": [
+            {
+              "seconds": 0.08007174544036388,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.08074489794671535,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.08144457265734673,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.07965884916484356,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.08240540884435177,
+              "peak_rss_mib": null
+            }
+          ]
+        },
+        "summary": {
+          "reference_rust": {
+            "median_s": 0.08053930476307869,
+            "q1_s": 0.08003542199730873,
+            "q3_s": 0.08073225617408752
+          },
+          "rust": {
+            "median_s": 0.08074489794671535,
+            "q1_s": 0.08007174544036388,
+            "q3_s": 0.08144457265734673
+          }
+        },
+        "speedup": 0.9974537935044225
+      },
+      {
+        "workload": "k6",
+        "parameters": {
+          "graphs": 4500,
+          "vertices": 6,
+          "edges": 15,
+          "min_support": 4500,
+          "max_vertices": 3,
+          "uniform_clique": true
+        },
+        "input_sha256": "133e45e2856cbb32753bd00c50d5da11f6a614618a5d650ca6beeb480985a800",
+        "threads": 8,
+        "interface": "cli",
+        "patterns": 3,
+        "result_sha256": "1cbcbca85ac7567206032ba9b1d2bc80585888772f64e71ebd7b629afb44a6d8",
+        "samples": {
+          "reference_rust": [
+            {
+              "seconds": 0.05665545538067818,
+              "peak_rss_mib": 45.75
+            },
+            {
+              "seconds": 0.05395951494574547,
+              "peak_rss_mib": 45.75
+            },
+            {
+              "seconds": 0.056283727288246155,
+              "peak_rss_mib": 46.25
+            },
+            {
+              "seconds": 0.05213945358991623,
+              "peak_rss_mib": 45.75
+            },
+            {
+              "seconds": 0.05241771973669529,
+              "peak_rss_mib": 45.75
+            }
+          ],
+          "rust": [
+            {
+              "seconds": 0.057854628190398216,
+              "peak_rss_mib": 45.75
+            },
+            {
+              "seconds": 0.05170782096683979,
+              "peak_rss_mib": 46.0
+            },
+            {
+              "seconds": 0.05546831898391247,
+              "peak_rss_mib": 46.0
+            },
+            {
+              "seconds": 0.06446688435971737,
+              "peak_rss_mib": 46.25
+            },
+            {
+              "seconds": 0.05806242115795612,
+              "peak_rss_mib": 46.0
+            }
+          ]
+        },
+        "summary": {
+          "reference_rust": {
+            "median_s": 0.05395951494574547,
+            "q1_s": 0.05241771973669529,
+            "q3_s": 0.056283727288246155,
+            "median_peak_rss_mib": 45.75
+          },
+          "rust": {
+            "median_s": 0.057854628190398216,
+            "q1_s": 0.05546831898391247,
+            "q3_s": 0.05806242115795612,
+            "median_peak_rss_mib": 46.0
+          }
+        },
+        "speedup": 0.9326741288210509
+      },
+      {
+        "workload": "k6",
+        "parameters": {
+          "graphs": 4500,
+          "vertices": 6,
+          "edges": 15,
+          "min_support": 4500,
+          "max_vertices": 3,
+          "uniform_clique": true
+        },
+        "input_sha256": "133e45e2856cbb32753bd00c50d5da11f6a614618a5d650ca6beeb480985a800",
+        "threads": 8,
+        "interface": "api",
+        "patterns": 3,
+        "result_sha256": "1cbcbca85ac7567206032ba9b1d2bc80585888772f64e71ebd7b629afb44a6d8",
+        "samples": {
+          "reference_rust": [
+            {
+              "seconds": 0.09247752465307713,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.09300978668034077,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.08078769408166409,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.09248473681509495,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.09280943684279919,
+              "peak_rss_mib": null
+            }
+          ],
+          "rust": [
+            {
+              "seconds": 0.09023582190275192,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.0940052680671215,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.08804717659950256,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.09286360256373882,
+              "peak_rss_mib": null
+            },
+            {
+              "seconds": 0.08615040965378284,
+              "peak_rss_mib": null
+            }
+          ]
+        },
+        "summary": {
+          "reference_rust": {
+            "median_s": 0.09248473681509495,
+            "q1_s": 0.09247752465307713,
+            "q3_s": 0.09280943684279919
+          },
+          "rust": {
+            "median_s": 0.09023582190275192,
+            "q1_s": 0.08804717659950256,
+            "q3_s": 0.09286360256373882
+          }
+        },
+        "speedup": 1.024922640088176
+      }
+    ]
+  }
+}

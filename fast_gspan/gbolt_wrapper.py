@@ -1,4 +1,4 @@
-"""Python wrapper for gBolt C++ implementation.
+"""Python wrapper for the gBolt command-line interface.
 
 Standalone version with no dependency on neural_graph_mining.
 """
@@ -108,15 +108,24 @@ class ProgressMonitor:
         self._thread: Optional[threading.Thread] = None
         self._pattern_count = 0
         self._start_time = 0.0
+        self._file_counts: Dict[str, Tuple[int, int, bytes]] = {}
 
     def _count_patterns_in_file(self, filepath: str) -> int:
+        offset, count, tail = self._file_counts.get(filepath, (0, 0, b""))
         try:
-            if not os.path.exists(filepath):
-                return 0
-            with open(filepath) as f:
-                return f.read().count("t #")
-        except Exception:
-            return 0
+            with open(filepath, "rb") as f:
+                if os.fstat(f.fileno()).st_size < offset:
+                    offset, count, tail = 0, 0, b""
+                f.seek(offset)
+                while chunk := f.read(64 * 1024):
+                    # A worker can flush in the middle of the header marker.
+                    data = tail + chunk
+                    count += data.count(b"t #")
+                    tail = data[-2:]
+                self._file_counts[filepath] = (f.tell(), count, tail)
+        except OSError:
+            pass
+        return count
 
     def _monitor_loop(self):
         spinner_chars = "|/-\\"
@@ -141,6 +150,7 @@ class ProgressMonitor:
 
     def start(self):
         self._start_time = time.time()
+        self._file_counts.clear()
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._thread.start()
@@ -165,22 +175,6 @@ def _find_vendor_gbolt() -> Optional[str]:
     if candidate.exists() and os.access(str(candidate), os.X_OK):
         return str(candidate)
     return None
-
-
-def _vendor_lib_env() -> dict:
-    """Return env dict with bundled lib/ added to the library search path.
-
-    On macOS wheels, libomp.dylib is bundled alongside the gBolt binary in a
-    lib/ subdirectory. We set DYLD_LIBRARY_PATH (macOS) or LD_LIBRARY_PATH
-    (Linux) so the binary can find them at runtime.
-    """
-    env = os.environ.copy()
-    lib_dir = Path(__file__).parent / "vendor" / "gbolt" / "build" / "lib"
-    if lib_dir.is_dir():
-        key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
-        existing = env.get(key, "")
-        env[key] = f"{lib_dir}:{existing}" if existing else str(lib_dir)
-    return env
 
 
 class GBoltWrapper:
@@ -237,7 +231,6 @@ class GBoltWrapper:
                 capture_output=True,
                 text=True,
                 timeout=5,
-                env=_vendor_lib_env(),
             )
             # returncode 0 or 1 are both acceptable (--help may return 1)
         except OSError as e:
@@ -511,7 +504,7 @@ class GBoltWrapper:
                 self._write_resume_file(resume_from, resume_file)
                 cmd.extend(["--resume", resume_file])
 
-            env = _vendor_lib_env()
+            env = os.environ.copy()
             if self.num_threads > 0:
                 env["OMP_NUM_THREADS"] = str(self.num_threads)
 

@@ -17,23 +17,20 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install build tools (Ubuntu)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y cmake g++ make
-
-      - name: Install build tools (macOS)
-        if: runner.os == 'macOS'
-        run: brew install cmake libomp
+      - uses: dtolnay/rust-toolchain@stable
 
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Test Rust backend
+        run: cargo test --locked --manifest-path native/Cargo.toml
+
       - name: Install package
         run: pip install ".[dev]"
 
-      - name: Build gBolt
-        run: python -m fast_gspan build
-
-      - name: Run tests
-        run: python -m pytest tests/ -v
+      - name: Run tests against installed wheel
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -c "from fast_gspan.gbolt_wrapper import _find_vendor_gbolt; assert _find_vendor_gbolt()"
+          python -m pytest "$GITHUB_WORKSPACE/tests" -v --import-mode=importlib

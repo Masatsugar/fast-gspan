@@ -5,13 +5,28 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: BSD-2-Clause](https://img.shields.io/badge/license-BSD--2--Clause-green.svg)](https://opensource.org/licenses/BSD-2-Clause)
 
-A Python wrapper for frequent subgraph mining powered by the [gBolt](https://github.com/Jokeren/gBolt) C++ backend.
+fast-gspan mines frequent subgraphs with a parallel Rust implementation of [gBolt](https://github.com/Jokeren/gBolt).
 
-Provides a simple API to mine frequent subgraph patterns from NetworkX graphs, with significant speedups over pure-Python gSpan implementations.
+The Python API accepts NetworkX graphs or gSpan files and returns a pandas DataFrame.
+
+## Performance
+
+On gBolt’s `Compound_422` database, the three miners returned identical patterns, supports and graph IDs at `-s 0.10` (minimum support of 42 out of 422 graphs). The table gives median wall time over five runs on an Intel Core i9-14900. For bounded queries, upstream gBolt mined all 15,966 patterns and a post-processing pass wrote the qualifying ones. Both fast-gspan versions applied the vertex cap during mining.
+
+| Max vertices | Threads | Patterns | Upstream gBolt | fast-gspan C++ (`16017f8`) | fast-gspan 0.1.5 (Rust) |
+|---|---:|---:|---:|---:|---:|
+| Unlimited | 1 | 15,966 | 388.8 ms | 502.1 ms | 373.7 ms |
+| Unlimited | 8 | 15,966 | 88.5 ms | 108.2 ms | 87.4 ms |
+| 5 | 1 | 288 | 418.6 ms | 26.5 ms | 18.9 ms |
+| 5 | 8 | 288 | 115.0 ms | 19.5 ms | 12.3 ms |
+| 8 | 1 | 1,599 | 413.6 ms | 77.7 ms | 61.8 ms |
+| 8 | 8 | 1,599 | 113.8 ms | 28.0 ms | 25.8 ms |
+
+At eight threads, Rust ran the five-vertex query 9.34× as fast as upstream mining plus filtering. Unrestricted mining took about the same time in upstream gBolt and Rust, with peak resident memory of 47.0 MiB upstream, 26.1 MiB in the C++ fork, and 17.8 MiB in Rust. [Upstream comparison and reproduction steps](https://github.com/Masatsugar/fast-gspan/blob/v0.1.5/benchmarks/UPSTREAM.md) · [C++ and Rust timings through the CLI and Python API](https://github.com/Masatsugar/fast-gspan/blob/v0.1.5/benchmarks/RESULTS.md)
 
 ## Installation
 
-Pre-built wheels are available for Linux (x86_64) and macOS (arm64, x86_64):
+The release workflow builds wheels for Linux x86_64 and macOS arm64. Each wheel includes the mining executable.
 
 ```bash
 pip install fast-gspan
@@ -19,26 +34,13 @@ pip install fast-gspan
 
 ### Building from source
 
-If a pre-built wheel is not available for your platform, install from source:
+Install a stable Rust toolchain with Cargo and a native linker to build from source. The package installer compiles the Rust executable during installation.
 
 ```bash
 pip install git+https://github.com/Masatsugar/fast-gspan.git
-python -m fast_gspan build   # compile the C++ backend
 ```
 
-Source builds require:
-
-- CMake >= 3.10
-- C++ compiler with C++11 support (GCC, Clang)
-- OpenMP (optional, for parallel mining)
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install cmake g++ make
-
-# macOS
-brew install cmake libomp
-```
+To rebuild the executable from a checkout or an installed package, run `python -m fast_gspan build`. The wheel includes the Rust source for this command. Use `python -m fast_gspan clean` to remove the built executable.
 
 ## Quick start
 
@@ -88,7 +90,7 @@ High-level interface. Constructor parameters:
 | `min_support` | `int` | `2` | Minimum absolute support threshold. |
 | `min_num_vertices` | `int` | `1` | Minimum vertices in a pattern. |
 | `max_num_vertices` | `int` | `0` | Maximum vertices in a pattern (0 = unlimited). |
-| `num_threads` | `int` | `0` | Number of OpenMP threads (0 = all cores). |
+| `num_threads` | `int` | `0` | Number of mining threads (0 uses the backend default). |
 | `timeout` | `float \| None` | `None` | Hard limit in seconds: gBolt is killed and an error is raised, without a result (None = unlimited). |
 | `time_limit` | `float \| None` | `None` | Time budget in seconds: when it is used up, the patterns found so far are returned (None = unlimited). See [Time limit and resume](#time-limit-and-resume). |
 | `show_progress` | `bool` | `False` | Show progress during mining. |
@@ -115,7 +117,7 @@ By default every pattern is extended, however many embeddings it has, so no patt
 
 Versions up to 0.1.3 silently dropped any pattern of two or more edges with more than 500,000 embeddings, together with all of its supergraphs. This affects large databases, where it removed even the most frequent patterns (275 of 398 on 249,456 molecules), and also small databases of dense or label-poor graphs (1,120 of 25,462 patterns on 200 graphs of 30 vertices). Results obtained with an earlier version on such data should be recomputed.
 
-Memory grows with the number of threads, because each thread holds the embedding lists of the patterns it is extending. If mining runs out of memory, lower `num_threads` first: the result stays complete and only the run time grows. On a dense benchmark (200 graphs, 30 vertices, average degree 6, `max_num_vertices=7`), 32 threads took 11 s and 7.3 GB, 8 threads 20 s and 2.5 GB, and 1 thread 104 s and 0.6 GB.
+Memory grows with the number of threads, because each thread holds the embedding lists of the patterns it is extending. If mining runs out of memory, lower `num_threads` first: the result stays complete and only the run time grows. In a benchmark with the previous C++ backend (200 graphs, 30 vertices, average degree 6, `max_num_vertices=7`), 32 threads took 11 s and 7.3 GB, 8 threads 20 s and 2.5 GB, and 1 thread 104 s and 0.6 GB.
 
 If that is not enough, `max_projection_size` bounds the embedding lists at the cost of completeness:
 
@@ -159,7 +161,7 @@ Once no `stop_reason` is left, the result is the same as that of a single uninte
 - **Small unextended patterns stay in the result.** They are kept even below `min_num_vertices`, because they are needed to resume, and are dropped once they have been extended.
 - **A killed run cannot be resumed.** `time_limit` ends the run in an orderly way. If gBolt is killed instead, by `timeout` or for lack of memory, nothing is returned ([#1](https://github.com/Masatsugar/fast-gspan/issues/1)).
 
-The call takes somewhat longer than `time_limit`: the limit is checked between patterns, and the results are written and read afterwards.
+The call can take longer than `time_limit`. Each worker finishes or marks its current pattern and flushes its output. Python then reads the results into a DataFrame.
 
 ## Output format
 
@@ -194,9 +196,24 @@ e 1 2 4
 t # -1
 ```
 
+## Comparing backend performance
+
+From a source checkout, build the Rust backend and the C++ reference in separate directories. The benchmark uses GNU time on Linux to record peak memory. Install the Python package and its dependencies before running it.
+
+```bash
+python -m fast_gspan build
+cmake -S fast_gspan/vendor/gbolt -B /tmp/fast-gspan-cpp
+cmake --build /tmp/fast-gspan-cpp --parallel
+FAST_GSPAN_CPP_REFERENCE=/tmp/fast-gspan-cpp/gbolt python -m pytest -k matches_brute_force_reference
+python -m benchmarks.compare --cpp /tmp/fast-gspan-cpp/gbolt \
+  --rust fast_gspan/vendor/gbolt/build/gbolt --output comparison.json
+```
+
+The differential test checks small graphs against both the C++ reference and an independent NetworkX enumeration. The benchmark verifies canonical DFS codes, supports and graph IDs for each complete run on sparse graphs, dense graphs and uniformly labeled cliques.
+
 ## Changes from upstream gBolt
 
-This package bundles a modified fork of [gBolt](https://github.com/Jokeren/gBolt) with the following changes:
+The Rust backend implements the command-line and mining extensions from this project’s [gBolt](https://github.com/Jokeren/gBolt) fork. To use an existing C++ build for comparison, pass its executable path as `gbolt_path`.
 
 ### New features
 
@@ -209,8 +226,9 @@ This package bundles a modified fork of [gBolt](https://github.com/Jokeren/gBolt
 
 These changes do not alter the mined patterns:
 
-- Extensions that can never be reported are no longer built: forward extensions of a pattern already at `--max-vertices`, and extensions whose DFS code is not minimal.
+- The miner stops adding vertices at `--max-vertices` and prunes nonminimal DFS codes.
 - The parsed input and the unpruned graphs are released before mining starts.
+- Each worker writes a pattern when its support and stop reason are final. The native process can release completed patterns while it continues the search. The Python API still returns the full result in memory.
 
 ### Output format change
 
@@ -221,17 +239,10 @@ These changes do not alter the mined patterns:
   The upstream format only emitted `e <from> <to> <edge_label>`. The extended format enables exact reconstruction of canonical DFS codes in the Python wrapper.
 - A pattern that was reported but not extended carries an extra line, `u: time_limit` or `u: max_projection_size`.
 
-### Build system
-
-- CMake minimum version raised from 2.6 to 3.10.
-- Added macOS (Apple Clang) fallback for OpenMP via Homebrew `libomp`.
-
-### Bug fixes
-
-- Added `const` qualifier to three `operator()` methods in `include/graph.h` to fix compiler warnings and ensure correctness with modern C++ standards.
-
 ## License
 
-The bundled gBolt C++ source is licensed under the **BSD 2-Clause License** (Copyright (c) 2017, Keren Zhou). See [`fast_gspan/vendor/gbolt/LICENSE`](fast_gspan/vendor/gbolt/LICENSE) for details.
+Masatsugar maintains fast-gspan. Xifeng Yan and Jiawei Han introduced the gSpan algorithm. The Rust backend is a port of Keren Zhou’s gBolt implementation and this project’s extensions. [Original gSpan paper](https://sites.cs.ucsb.edu/~xyan/papers/gSpan.pdf)
+
+The Rust port uses the **BSD 2-Clause License** and retains gBolt’s original 2017 copyright notice for Keren Zhou. [License and redistribution terms](https://github.com/Masatsugar/fast-gspan/blob/v0.1.5/native/LICENSE)
 
 The Python wrapper code in this repository is also released under the BSD 2-Clause License.

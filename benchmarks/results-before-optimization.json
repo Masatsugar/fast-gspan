@@ -1,0 +1,931 @@
+{
+  "system": "Linux-6.8.0-136-generic-x86_64-with-glibc2.35",
+  "python": "3.13.13",
+  "networkx": "3.6.1",
+  "seed": 42,
+  "repetitions": 5,
+  "binaries": {
+    "cpp": {
+      "sha256": "04b8ed12994a4b64d93592bf4e31045d0d8cd7f148c60411e5771916152fc542",
+      "name": "gbolt"
+    },
+    "rust": {
+      "sha256": "348d56bfe4a46890ab6fcd616e6c3983029c8e5d01255a9696b1423e5d52248b",
+      "name": "fast-gspan-rust-final"
+    }
+  },
+  "cases": [
+    {
+      "workload": "sparse",
+      "parameters": {
+        "graphs": 500,
+        "vertices": 30,
+        "edges": 35,
+        "min_support": 25,
+        "max_vertices": 5,
+        "uniform_clique": false
+      },
+      "input_sha256": "62e8c6f0751889022caf6a6d4d772ef945c315c6385b5c9beccae24866e42a01",
+      "threads": 1,
+      "interface": "cli",
+      "patterns": 943,
+      "result_sha256": "470f8c93da052f820e45cb2942e13e1b9f9639c6e9033453f29b3ddb8b3e243f",
+      "samples": {
+        "cpp": [
+          {
+            "seconds": 0.06864947639405727,
+            "peak_rss_mib": 10.76953125
+          },
+          {
+            "seconds": 0.07332308776676655,
+            "peak_rss_mib": 10.76953125
+          },
+          {
+            "seconds": 0.07277528010308743,
+            "peak_rss_mib": 10.765625
+          },
+          {
+            "seconds": 0.06554146856069565,
+            "peak_rss_mib": 10.4765625
+          },
+          {
+            "seconds": 0.06532819755375385,
+            "peak_rss_mib": 10.76171875
+          }
+        ],
+        "rust": [
+          {
+            "seconds": 0.06137627921998501,
+            "peak_rss_mib": 7.5
+          },
+          {
+            "seconds": 0.054507190361618996,
+            "peak_rss_mib": 7.5
+          },
+          {
+            "seconds": 0.054902251809835434,
+            "peak_rss_mib": 7.24609375
+          },
+          {
+            "seconds": 0.06501798890531063,
+            "peak_rss_mib": 7.0
+          },
+          {
+            "seconds": 0.06268146447837353,
+            "peak_rss_mib": 7.4921875
+          }
+        ]
+      },
+      "summary": {
+        "cpp": {
+          "median_s": 0.06864947639405727,
+          "q1_s": 0.06554146856069565,
+          "q3_s": 0.07277528010308743,
+          "median_peak_rss_mib": 10.765625
+        },
+        "rust": {
+          "median_s": 0.06137627921998501,
+          "q1_s": 0.054902251809835434,
+          "q3_s": 0.06268146447837353,
+          "median_peak_rss_mib": 7.4921875
+        }
+      },
+      "speedup": 1.118501761046864
+    },
+    {
+      "workload": "sparse",
+      "parameters": {
+        "graphs": 500,
+        "vertices": 30,
+        "edges": 35,
+        "min_support": 25,
+        "max_vertices": 5,
+        "uniform_clique": false
+      },
+      "input_sha256": "62e8c6f0751889022caf6a6d4d772ef945c315c6385b5c9beccae24866e42a01",
+      "threads": 1,
+      "interface": "api",
+      "patterns": 943,
+      "result_sha256": "470f8c93da052f820e45cb2942e13e1b9f9639c6e9033453f29b3ddb8b3e243f",
+      "samples": {
+        "cpp": [
+          {
+            "seconds": 0.09268773533403873,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.09011604450643063,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.09127539582550526,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.09117032773792744,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.09197081811726093,
+            "peak_rss_mib": null
+          }
+        ],
+        "rust": [
+          {
+            "seconds": 0.08337610773742199,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.0899448823183775,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.08404536731541157,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.08024348132312298,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.08123824000358582,
+            "peak_rss_mib": null
+          }
+        ]
+      },
+      "summary": {
+        "cpp": {
+          "median_s": 0.09127539582550526,
+          "q1_s": 0.09117032773792744,
+          "q3_s": 0.09197081811726093
+        },
+        "rust": {
+          "median_s": 0.08337610773742199,
+          "q1_s": 0.08123824000358582,
+          "q3_s": 0.08404536731541157
+        }
+      },
+      "speedup": 1.094742826241789
+    },
+    {
+      "workload": "sparse",
+      "parameters": {
+        "graphs": 500,
+        "vertices": 30,
+        "edges": 35,
+        "min_support": 25,
+        "max_vertices": 5,
+        "uniform_clique": false
+      },
+      "input_sha256": "62e8c6f0751889022caf6a6d4d772ef945c315c6385b5c9beccae24866e42a01",
+      "threads": 8,
+      "interface": "cli",
+      "patterns": 943,
+      "result_sha256": "470f8c93da052f820e45cb2942e13e1b9f9639c6e9033453f29b3ddb8b3e243f",
+      "samples": {
+        "cpp": [
+          {
+            "seconds": 0.02278687059879303,
+            "peak_rss_mib": 12.34375
+          },
+          {
+            "seconds": 0.022896897047758102,
+            "peak_rss_mib": 12.58203125
+          },
+          {
+            "seconds": 0.023077312856912613,
+            "peak_rss_mib": 12.09375
+          },
+          {
+            "seconds": 0.022654468193650246,
+            "peak_rss_mib": 11.859375
+          },
+          {
+            "seconds": 0.022579504176974297,
+            "peak_rss_mib": 12.5234375
+          }
+        ],
+        "rust": [
+          {
+            "seconds": 0.01775430701673031,
+            "peak_rss_mib": 11.75
+          },
+          {
+            "seconds": 0.017996473237872124,
+            "peak_rss_mib": 12.25
+          },
+          {
+            "seconds": 0.017592502757906914,
+            "peak_rss_mib": 11.609375
+          },
+          {
+            "seconds": 0.017806781455874443,
+            "peak_rss_mib": 10.75
+          },
+          {
+            "seconds": 0.017851924523711205,
+            "peak_rss_mib": 11.75
+          }
+        ]
+      },
+      "summary": {
+        "cpp": {
+          "median_s": 0.02278687059879303,
+          "q1_s": 0.022654468193650246,
+          "q3_s": 0.022896897047758102,
+          "median_peak_rss_mib": 12.34375
+        },
+        "rust": {
+          "median_s": 0.017806781455874443,
+          "q1_s": 0.01775430701673031,
+          "q3_s": 0.017851924523711205,
+          "median_peak_rss_mib": 11.75
+        }
+      },
+      "speedup": 1.279673738640492
+    },
+    {
+      "workload": "sparse",
+      "parameters": {
+        "graphs": 500,
+        "vertices": 30,
+        "edges": 35,
+        "min_support": 25,
+        "max_vertices": 5,
+        "uniform_clique": false
+      },
+      "input_sha256": "62e8c6f0751889022caf6a6d4d772ef945c315c6385b5c9beccae24866e42a01",
+      "threads": 8,
+      "interface": "api",
+      "patterns": 943,
+      "result_sha256": "470f8c93da052f820e45cb2942e13e1b9f9639c6e9033453f29b3ddb8b3e243f",
+      "samples": {
+        "cpp": [
+          {
+            "seconds": 0.04603964276611805,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.050722114741802216,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.0599278062582016,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.050144489854574203,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.046397069469094276,
+            "peak_rss_mib": null
+          }
+        ],
+        "rust": [
+          {
+            "seconds": 0.040632424876093864,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.042829399928450584,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.0424043033272028,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.04269738309085369,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.04132159613072872,
+            "peak_rss_mib": null
+          }
+        ]
+      },
+      "summary": {
+        "cpp": {
+          "median_s": 0.050144489854574203,
+          "q1_s": 0.046397069469094276,
+          "q3_s": 0.050722114741802216
+        },
+        "rust": {
+          "median_s": 0.0424043033272028,
+          "q1_s": 0.04132159613072872,
+          "q3_s": 0.04269738309085369
+        }
+      },
+      "speedup": 1.1825330431123011
+    },
+    {
+      "workload": "dense",
+      "parameters": {
+        "graphs": 200,
+        "vertices": 30,
+        "edges": 90,
+        "min_support": 20,
+        "max_vertices": 6,
+        "uniform_clique": false
+      },
+      "input_sha256": "d3578396118a258dc57b7b24ab098c7dff8e696d50738c73a256a029b527cb95",
+      "threads": 1,
+      "interface": "cli",
+      "patterns": 104084,
+      "result_sha256": "30602683c5ac03c344722fd3da89baac9bfaeb5b9dd2bc2d376c75043c8f0193",
+      "samples": {
+        "cpp": [
+          {
+            "seconds": 8.577343549579382,
+            "peak_rss_mib": 62.078125
+          },
+          {
+            "seconds": 8.047744477167726,
+            "peak_rss_mib": 62.21875
+          },
+          {
+            "seconds": 8.065703244879842,
+            "peak_rss_mib": 61.515625
+          },
+          {
+            "seconds": 8.04775844141841,
+            "peak_rss_mib": 61.9140625
+          },
+          {
+            "seconds": 8.028302796185017,
+            "peak_rss_mib": 62.25390625
+          }
+        ],
+        "rust": [
+          {
+            "seconds": 8.303949875757098,
+            "peak_rss_mib": 131.0234375
+          },
+          {
+            "seconds": 7.628578208386898,
+            "peak_rss_mib": 130.78515625
+          },
+          {
+            "seconds": 7.595483720302582,
+            "peak_rss_mib": 131.140625
+          },
+          {
+            "seconds": 7.690237767994404,
+            "peak_rss_mib": 131.21484375
+          },
+          {
+            "seconds": 7.579919734969735,
+            "peak_rss_mib": 131.171875
+          }
+        ]
+      },
+      "summary": {
+        "cpp": {
+          "median_s": 8.04775844141841,
+          "q1_s": 8.047744477167726,
+          "q3_s": 8.065703244879842,
+          "median_peak_rss_mib": 62.078125
+        },
+        "rust": {
+          "median_s": 7.628578208386898,
+          "q1_s": 7.595483720302582,
+          "q3_s": 7.690237767994404,
+          "median_peak_rss_mib": 131.140625
+        }
+      },
+      "speedup": 1.0549486708507048
+    },
+    {
+      "workload": "dense",
+      "parameters": {
+        "graphs": 200,
+        "vertices": 30,
+        "edges": 90,
+        "min_support": 20,
+        "max_vertices": 6,
+        "uniform_clique": false
+      },
+      "input_sha256": "d3578396118a258dc57b7b24ab098c7dff8e696d50738c73a256a029b527cb95",
+      "threads": 1,
+      "interface": "api",
+      "patterns": 104084,
+      "result_sha256": "30602683c5ac03c344722fd3da89baac9bfaeb5b9dd2bc2d376c75043c8f0193",
+      "samples": {
+        "cpp": [
+          {
+            "seconds": 9.922026991844177,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 9.990203076973557,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 10.14123735204339,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 9.976403212174773,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 9.833538454025984,
+            "peak_rss_mib": null
+          }
+        ],
+        "rust": [
+          {
+            "seconds": 10.165223881602287,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 9.424493048340082,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 10.01643155887723,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 9.461077824234962,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 9.388003220781684,
+            "peak_rss_mib": null
+          }
+        ]
+      },
+      "summary": {
+        "cpp": {
+          "median_s": 9.976403212174773,
+          "q1_s": 9.922026991844177,
+          "q3_s": 9.990203076973557
+        },
+        "rust": {
+          "median_s": 9.461077824234962,
+          "q1_s": 9.424493048340082,
+          "q3_s": 10.01643155887723
+        }
+      },
+      "speedup": 1.054467936688966
+    },
+    {
+      "workload": "dense",
+      "parameters": {
+        "graphs": 200,
+        "vertices": 30,
+        "edges": 90,
+        "min_support": 20,
+        "max_vertices": 6,
+        "uniform_clique": false
+      },
+      "input_sha256": "d3578396118a258dc57b7b24ab098c7dff8e696d50738c73a256a029b527cb95",
+      "threads": 8,
+      "interface": "cli",
+      "patterns": 104084,
+      "result_sha256": "30602683c5ac03c344722fd3da89baac9bfaeb5b9dd2bc2d376c75043c8f0193",
+      "samples": {
+        "cpp": [
+          {
+            "seconds": 1.229595748707652,
+            "peak_rss_mib": 122.54296875
+          },
+          {
+            "seconds": 1.221203887835145,
+            "peak_rss_mib": 122.32421875
+          },
+          {
+            "seconds": 1.2295391950756311,
+            "peak_rss_mib": 124.55859375
+          },
+          {
+            "seconds": 1.3695755824446678,
+            "peak_rss_mib": 122.0078125
+          },
+          {
+            "seconds": 1.3882686961442232,
+            "peak_rss_mib": 125.4765625
+          }
+        ],
+        "rust": [
+          {
+            "seconds": 1.2146817930042744,
+            "peak_rss_mib": 206.84375
+          },
+          {
+            "seconds": 1.2044728361070156,
+            "peak_rss_mib": 211.34375
+          },
+          {
+            "seconds": 1.2812830936163664,
+            "peak_rss_mib": 199.71484375
+          },
+          {
+            "seconds": 1.3797074351459742,
+            "peak_rss_mib": 192.6875
+          },
+          {
+            "seconds": 1.385784463956952,
+            "peak_rss_mib": 214.2109375
+          }
+        ]
+      },
+      "summary": {
+        "cpp": {
+          "median_s": 1.229595748707652,
+          "q1_s": 1.2295391950756311,
+          "q3_s": 1.3695755824446678,
+          "median_peak_rss_mib": 122.54296875
+        },
+        "rust": {
+          "median_s": 1.2812830936163664,
+          "q1_s": 1.2146817930042744,
+          "q3_s": 1.3797074351459742,
+          "median_peak_rss_mib": 206.84375
+        }
+      },
+      "speedup": 0.9596596995884579
+    },
+    {
+      "workload": "dense",
+      "parameters": {
+        "graphs": 200,
+        "vertices": 30,
+        "edges": 90,
+        "min_support": 20,
+        "max_vertices": 6,
+        "uniform_clique": false
+      },
+      "input_sha256": "d3578396118a258dc57b7b24ab098c7dff8e696d50738c73a256a029b527cb95",
+      "threads": 8,
+      "interface": "api",
+      "patterns": 104084,
+      "result_sha256": "30602683c5ac03c344722fd3da89baac9bfaeb5b9dd2bc2d376c75043c8f0193",
+      "samples": {
+        "cpp": [
+          {
+            "seconds": 3.2367074601352215,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 3.3503938149660826,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 3.103370539844036,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 3.412992352619767,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 2.995389264076948,
+            "peak_rss_mib": null
+          }
+        ],
+        "rust": [
+          {
+            "seconds": 3.42843977175653,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 3.291789688169956,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 3.0302057527005672,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 3.2532585840672255,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 3.12907637655735,
+            "peak_rss_mib": null
+          }
+        ]
+      },
+      "summary": {
+        "cpp": {
+          "median_s": 3.2367074601352215,
+          "q1_s": 3.103370539844036,
+          "q3_s": 3.3503938149660826
+        },
+        "rust": {
+          "median_s": 3.2532585840672255,
+          "q1_s": 3.12907637655735,
+          "q3_s": 3.291789688169956
+        }
+      },
+      "speedup": 0.9949124474724933
+    },
+    {
+      "workload": "k6",
+      "parameters": {
+        "graphs": 4500,
+        "vertices": 6,
+        "edges": 15,
+        "min_support": 4500,
+        "max_vertices": 3,
+        "uniform_clique": true
+      },
+      "input_sha256": "133e45e2856cbb32753bd00c50d5da11f6a614618a5d650ca6beeb480985a800",
+      "threads": 1,
+      "interface": "cli",
+      "patterns": 3,
+      "result_sha256": "1cbcbca85ac7567206032ba9b1d2bc80585888772f64e71ebd7b629afb44a6d8",
+      "samples": {
+        "cpp": [
+          {
+            "seconds": 0.0681238304823637,
+            "peak_rss_mib": 62.0234375
+          },
+          {
+            "seconds": 0.06764387898147106,
+            "peak_rss_mib": 62.03515625
+          },
+          {
+            "seconds": 0.0657969880849123,
+            "peak_rss_mib": 62.0078125
+          },
+          {
+            "seconds": 0.0784683171659708,
+            "peak_rss_mib": 61.80078125
+          },
+          {
+            "seconds": 0.06541221030056477,
+            "peak_rss_mib": 62.19140625
+          }
+        ],
+        "rust": [
+          {
+            "seconds": 0.05195118859410286,
+            "peak_rss_mib": 46.25
+          },
+          {
+            "seconds": 0.0559390764683485,
+            "peak_rss_mib": 46.25
+          },
+          {
+            "seconds": 0.05110750533640385,
+            "peak_rss_mib": 46.0
+          },
+          {
+            "seconds": 0.05288325622677803,
+            "peak_rss_mib": 46.0
+          },
+          {
+            "seconds": 0.05039592087268829,
+            "peak_rss_mib": 46.25
+          }
+        ]
+      },
+      "summary": {
+        "cpp": {
+          "median_s": 0.06764387898147106,
+          "q1_s": 0.0657969880849123,
+          "q3_s": 0.0681238304823637,
+          "median_peak_rss_mib": 62.0234375
+        },
+        "rust": {
+          "median_s": 0.05195118859410286,
+          "q1_s": 0.05110750533640385,
+          "q3_s": 0.05288325622677803,
+          "median_peak_rss_mib": 46.25
+        }
+      },
+      "speedup": 1.302066051076828
+    },
+    {
+      "workload": "k6",
+      "parameters": {
+        "graphs": 4500,
+        "vertices": 6,
+        "edges": 15,
+        "min_support": 4500,
+        "max_vertices": 3,
+        "uniform_clique": true
+      },
+      "input_sha256": "133e45e2856cbb32753bd00c50d5da11f6a614618a5d650ca6beeb480985a800",
+      "threads": 1,
+      "interface": "api",
+      "patterns": 3,
+      "result_sha256": "1cbcbca85ac7567206032ba9b1d2bc80585888772f64e71ebd7b629afb44a6d8",
+      "samples": {
+        "cpp": [
+          {
+            "seconds": 0.10977132804691792,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.09355370700359344,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.09234144352376461,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.0957922451198101,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.09677178971469402,
+            "peak_rss_mib": null
+          }
+        ],
+        "rust": [
+          {
+            "seconds": 0.07889867573976517,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.07875727489590645,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.08874886482954025,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.0763045996427536,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.07738124765455723,
+            "peak_rss_mib": null
+          }
+        ]
+      },
+      "summary": {
+        "cpp": {
+          "median_s": 0.0957922451198101,
+          "q1_s": 0.09355370700359344,
+          "q3_s": 0.09677178971469402
+        },
+        "rust": {
+          "median_s": 0.07875727489590645,
+          "q1_s": 0.07738124765455723,
+          "q3_s": 0.07889867573976517
+        }
+      },
+      "speedup": 1.2162971007620411
+    },
+    {
+      "workload": "k6",
+      "parameters": {
+        "graphs": 4500,
+        "vertices": 6,
+        "edges": 15,
+        "min_support": 4500,
+        "max_vertices": 3,
+        "uniform_clique": true
+      },
+      "input_sha256": "133e45e2856cbb32753bd00c50d5da11f6a614618a5d650ca6beeb480985a800",
+      "threads": 8,
+      "interface": "cli",
+      "patterns": 3,
+      "result_sha256": "1cbcbca85ac7567206032ba9b1d2bc80585888772f64e71ebd7b629afb44a6d8",
+      "samples": {
+        "cpp": [
+          {
+            "seconds": 0.0778729971498251,
+            "peak_rss_mib": 66.8828125
+          },
+          {
+            "seconds": 0.07415760681033134,
+            "peak_rss_mib": 66.8203125
+          },
+          {
+            "seconds": 0.08783038333058357,
+            "peak_rss_mib": 66.37890625
+          },
+          {
+            "seconds": 0.07357979938387871,
+            "peak_rss_mib": 66.40625
+          },
+          {
+            "seconds": 0.08419808931648731,
+            "peak_rss_mib": 66.99609375
+          }
+        ],
+        "rust": [
+          {
+            "seconds": 0.06914142332971096,
+            "peak_rss_mib": 46.0
+          },
+          {
+            "seconds": 0.054621629416942596,
+            "peak_rss_mib": 46.0
+          },
+          {
+            "seconds": 0.07322519645094872,
+            "peak_rss_mib": 46.25
+          },
+          {
+            "seconds": 0.06332650780677795,
+            "peak_rss_mib": 46.0
+          },
+          {
+            "seconds": 0.061170514672994614,
+            "peak_rss_mib": 46.0
+          }
+        ]
+      },
+      "summary": {
+        "cpp": {
+          "median_s": 0.0778729971498251,
+          "q1_s": 0.07415760681033134,
+          "q3_s": 0.08419808931648731,
+          "median_peak_rss_mib": 66.8203125
+        },
+        "rust": {
+          "median_s": 0.06332650780677795,
+          "q1_s": 0.061170514672994614,
+          "q3_s": 0.06914142332971096,
+          "median_peak_rss_mib": 46.0
+        }
+      },
+      "speedup": 1.2297061664513609
+    },
+    {
+      "workload": "k6",
+      "parameters": {
+        "graphs": 4500,
+        "vertices": 6,
+        "edges": 15,
+        "min_support": 4500,
+        "max_vertices": 3,
+        "uniform_clique": true
+      },
+      "input_sha256": "133e45e2856cbb32753bd00c50d5da11f6a614618a5d650ca6beeb480985a800",
+      "threads": 8,
+      "interface": "api",
+      "patterns": 3,
+      "result_sha256": "1cbcbca85ac7567206032ba9b1d2bc80585888772f64e71ebd7b629afb44a6d8",
+      "samples": {
+        "cpp": [
+          {
+            "seconds": 0.10010732151567936,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.10820817574858665,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.10476605035364628,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.10290483944118023,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.10148688033223152,
+            "peak_rss_mib": null
+          }
+        ],
+        "rust": [
+          {
+            "seconds": 0.08617249689996243,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.09064636565744877,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.09647605754435062,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.08587524853646755,
+            "peak_rss_mib": null
+          },
+          {
+            "seconds": 0.0936325266957283,
+            "peak_rss_mib": null
+          }
+        ]
+      },
+      "summary": {
+        "cpp": {
+          "median_s": 0.10290483944118023,
+          "q1_s": 0.10148688033223152,
+          "q3_s": 0.10476605035364628
+        },
+        "rust": {
+          "median_s": 0.09064636565744877,
+          "q1_s": 0.08617249689996243,
+          "q3_s": 0.0936325266957283
+        }
+      },
+      "speedup": 1.1352340349756112
+    }
+  ]
+}

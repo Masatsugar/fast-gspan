@@ -1,6 +1,7 @@
 """Tests for fast_gspan standalone package."""
 
 import json
+import os
 import random
 import types
 import warnings
@@ -16,6 +17,7 @@ from fast_gspan.gbolt_wrapper import (
     FastgSpan,
     GBoltWrapper,
     IncompleteResultWarning,
+    ProgressMonitor,
     _effective_min_support,
     _find_vendor_gbolt,
     _read_gspan_file,
@@ -178,6 +180,16 @@ def _results(df: pd.DataFrame) -> dict:
 
 
 # ---- unit tests (no gBolt binary required) ----
+
+def test_progress_counts_append_only_shards_across_partial_writes(tmp_path):
+    shard = tmp_path / "patterns.t0"
+    monitor = ProgressMonitor(str(tmp_path / "patterns"))
+    shard.write_bytes(b"t # 0 * 1\nx: 0\nt ")
+    assert monitor._count_patterns_in_file(str(shard)) == 1
+    with shard.open("ab") as output:
+        output.write(b"# 1 * 1\nx: 0\n")
+    assert monitor._count_patterns_in_file(str(shard)) == 2
+    assert monitor._count_patterns_in_file(str(shard)) == 2
 
 
 class TestParseOutput:
@@ -581,6 +593,13 @@ class TestIntegration:
         df = FastgSpan(min_support=3, max_num_vertices=max_vertices).run_from_graphs(
             graphs
         )
+        cpp_binary = os.environ.get("FAST_GSPAN_CPP_REFERENCE")
+        if cpp_binary:
+            assert os.access(cpp_binary, os.X_OK), cpp_binary
+            legacy = FastgSpan(
+                gbolt_path=cpp_binary, min_support=3, max_num_vertices=max_vertices
+            ).run_from_graphs(graphs)
+            assert _results(df) == _results(legacy)
 
         unmatched = list(reference)
         for row in df.itertuples():
